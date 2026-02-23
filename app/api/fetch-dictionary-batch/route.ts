@@ -1,9 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
 import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
+import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 10 batch requests per minute per IP (stricter for batch)
+    const clientId = getClientIdentifier(request)
+    const rateLimit = checkRateLimit(clientId + ':batch', { maxRequests: 10, windowMs: 60000 })
+    
+    if (!rateLimit.allowed) {
+      const resetIn = Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+      return NextResponse.json(
+        { error: `Rate limit exceeded for batch requests. Try again in ${resetIn} seconds.` },
+        { 
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimit.limit.toString(),
+            'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+            'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString(),
+            'Retry-After': resetIn.toString()
+          }
+        }
+      )
+    }
+    
     const { words } = await request.json()
     
     if (!words || !Array.isArray(words) || words.length === 0) {
