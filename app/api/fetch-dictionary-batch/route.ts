@@ -200,10 +200,10 @@ CRITICAL Rules:
       console.log('📝 Using scraped data as fallback (no AI processing)')
       const fallbackResults = successfulScrapes.map(data => ({
         word: data.word,
-        part_of_speech: data.partOfSpeech || '',
-        cefr_level: data.cefrLevel || 'n.a.',
-        meaning_primary: data.definition || '',
-        usage_tips: data.examples?.[0] || ''
+        part_of_speech: (data as any).partOfSpeech || '',
+        cefr_level: (data as any).cefrLevel || 'n.a.',
+        meaning_primary: (data as any).definition || '',
+        usage_tips: (data as any).examples?.[0] || ''
       }))
       
       return NextResponse.json({
@@ -232,10 +232,10 @@ CRITICAL Rules:
       // Fallback
       const fallbackResults = successfulScrapes.map(data => ({
         word: data.word,
-        part_of_speech: data.partOfSpeech || '',
-        cefr_level: data.cefrLevel || 'n.a.',
-        meaning_primary: data.definition || '',
-        usage_tips: data.examples?.[0] || ''
+        part_of_speech: (data as any).partOfSpeech || '',
+        cefr_level: (data as any).cefrLevel || 'n.a.',
+        meaning_primary: (data as any).definition || '',
+        usage_tips: (data as any).examples?.[0] || ''
       }))
       
       return NextResponse.json({
@@ -262,17 +262,17 @@ CRITICAL Rules:
       console.error('Failed to parse AI response, using scraped data as fallback')
       processedData = successfulScrapes.map(data => ({
         word: data.word,
-        part_of_speech: data.partOfSpeech || '',
-        cefr_level: data.cefrLevel || 'n.a.',
-        meaning_primary: data.definition || '',
-        usage_tips: data.examples?.[0] || ''
+        part_of_speech: (data as any).partOfSpeech || '',
+        cefr_level: (data as any).cefrLevel || 'n.a.',
+        meaning_primary: (data as any).definition || '',
+        usage_tips: (data as any).examples?.[0] || ''
       }))
     }
 
     // Validate and ensure all words are present
     const finalResults = processedData.map((item: any) => {
       // Find original scraped data for this word
-      const scraped = successfulScrapes.find(s => s.word.toLowerCase() === item.word?.toLowerCase())
+      const scraped: any = successfulScrapes.find(s => s.word.toLowerCase() === item.word?.toLowerCase())
       
       return {
         word: item.word || scraped?.word || '',
