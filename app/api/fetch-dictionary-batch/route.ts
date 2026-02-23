@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     // Prepare batch data for AI - handle both Cambridge and Oxford formats
     const batchScrapedData = successfulScrapes.map((data, index) => {
-      const source = data.source || 'Cambridge'
+      const source = (data as any).source || 'Cambridge'
       const formattedData = source.includes('Oxford') && !source.includes('Cambridge')
         ? formatOxfordData(data)
         : formatCambridgeData(data)
