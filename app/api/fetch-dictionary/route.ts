@@ -51,20 +51,40 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Dictionary data from ${source}:`, dictionaryData)
-    const useLMStudio = process.env.USE_LM_STUDIO === 'true'
-    const apiUrl = useLMStudio 
-      ? (process.env.LM_STUDIO_URL || 'http://localhost:1234/v1/chat/completions')
-      : 'https://api.openai.com/v1/chat/completions'
     
-    const apiKey = process.env.OPENAI_API_KEY || 'lm-studio' // LM Studio doesn't require a real key
-    const model = useLMStudio 
-      ? (process.env.LM_STUDIO_MODEL || 'local-model') // LM Studio uses loaded model
-      : 'gpt-4o-mini'
-
-    if (!useLMStudio && !process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ 
-        error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file or set USE_LM_STUDIO=true' 
-      }, { status: 500 })
+    // Determine which AI service to use
+    const useHuggingFace = process.env.USE_HUGGINGFACE === 'true'
+    const useLMStudio = process.env.USE_LM_STUDIO === 'true'
+    
+    let apiUrl: string
+    let apiKey: string
+    let model: string
+    
+    if (useHuggingFace) {
+      // Hugging Face Inference API
+      model = process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct'
+      apiUrl = `https://api-inference.huggingface.co/models/${model}`
+      apiKey = process.env.HUGGINGFACE_API_KEY || ''
+      if (!apiKey) {
+        return NextResponse.json({ 
+          error: 'Hugging Face API key not configured. Please add HUGGINGFACE_API_KEY to your .env.local file' 
+        }, { status: 500 })
+      }
+    } else if (useLMStudio) {
+      // LM Studio (local)
+      apiUrl = process.env.LM_STUDIO_URL || 'http://localhost:1234/v1/chat/completions'
+      apiKey = 'lm-studio'
+      model = process.env.LM_STUDIO_MODEL || 'local-model'
+    } else {
+      // OpenAI
+      apiUrl = 'https://api.openai.com/v1/chat/completions'
+      apiKey = process.env.OPENAI_API_KEY || ''
+      model = 'gpt-4o-mini'
+      if (!apiKey) {
+        return NextResponse.json({ 
+          error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file or set USE_LM_STUDIO=true or USE_HUGGINGFACE=true' 
+        }, { status: 500 })
+      }
     }
 
     // Call AI API to structure the scraped information
@@ -72,22 +92,16 @@ export async function POST(request: NextRequest) {
       'Content-Type': 'application/json',
     }
     
-    // Only add Authorization header if not using LM Studio or if LM Studio has auth
-    if (!useLMStudio || process.env.OPENAI_API_KEY) {
+    // Add Authorization header based on service
+    if (useHuggingFace || (!useLMStudio && apiKey)) {
       headers['Authorization'] = `Bearer ${apiKey}`
     }
 
-    console.log(`🤖 Sending to ${useLMStudio ? 'LM Studio' : 'OpenAI'} for processing...`)
+    const serviceName = useHuggingFace ? 'Hugging Face' : (useLMStudio ? 'LM Studio' : 'OpenAI')
+    console.log(`🤖 Sending to ${serviceName} for processing...`)
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: `You are a dictionary data processor. You receive scraped data from Cambridge Dictionary and must convert it to a structured JSON format.
+    // Prepare the prompt content
+    const systemPrompt = `You are a dictionary data processor. You receive scraped data from Cambridge Dictionary and must convert it to a structured JSON format.
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -104,27 +118,65 @@ Rules:
 - For meaning_primary: use the first definition exactly as scraped
 - For usage_tips: use the first example sentence from the scraped data, or create a brief usage note if no examples
 - Return ONLY the JSON object, no markdown code blocks or additional text`
+    
+    const userPrompt = `Here is the data scraped from a dictionary:\n\n${scrapedDataText}\n\nConvert this to the required JSON format.`
+
+    let requestBody: any
+    
+    if (useHuggingFace) {
+      // Hugging Face uses a simpler text-to-text format
+      requestBody = {
+        inputs: `${systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant:`,
+        parameters: {
+          max_new_tokens: 500,
+          temperature: 0.2,
+          return_full_text: false
+        }
+      }
+    } else {
+      // OpenAI/LM Studio use chat completions format
+      requestBody = {
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
           },
           {
             role: 'user',
-            content: `Here is the data scraped from a dictionary:\n\n${scrapedDataText}\n\nConvert this to the required JSON format.`
+            content: userPrompt
           }
         ],
         temperature: 0.2,
         max_tokens: 500
-      })
+      }
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error(`❌ ${useLMStudio ? 'LM Studio' : 'OpenAI'} Error:`, errorData)
+      console.error(`❌ ${serviceName} Error:`, errorData)
       return NextResponse.json({ 
-        error: `Failed to process dictionary data with AI${useLMStudio ? ' (LM Studio)' : ''}. Is the server running?` 
+        error: `Failed to process dictionary data with ${serviceName}${useHuggingFace ? '. Check your API key and model availability.' : useLMStudio ? '. Is the server running?' : ''}` 
       }, { status: response.status })
     }
 
     const data = await response.json()
-    const content = data.choices[0]?.message?.content
+    
+    // Extract content based on API response format
+    let content: string
+    if (useHuggingFace) {
+      // Hugging Face returns array or object with generated_text
+      content = Array.isArray(data) ? data[0]?.generated_text : data.generated_text
+    } else {
+      // OpenAI/LM Studio format
+      content = data.choices[0]?.message?.content
+    }
 
     if (!content) {
       return NextResponse.json({ 

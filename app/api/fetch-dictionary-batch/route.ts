@@ -74,20 +74,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Use AI to process all scraped data in one batch
+    const useHuggingFace = process.env.USE_HUGGINGFACE === 'true'
     const useLMStudio = process.env.USE_LM_STUDIO === 'true'
-    const apiUrl = useLMStudio 
-      ? (process.env.LM_STUDIO_URL || 'http://localhost:1234/v1/chat/completions')
-      : 'https://api.openai.com/v1/chat/completions'
     
-    const apiKey = process.env.OPENAI_API_KEY || 'lm-studio'
-    const model = useLMStudio 
-      ? (process.env.LM_STUDIO_MODEL || 'local-model')
-      : 'gpt-4o-mini'
-
-    if (!useLMStudio && !process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ 
-        error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file or set USE_LM_STUDIO=true' 
-      }, { status: 500 })
+    let apiUrl: string
+    let apiKey: string
+    let model: string
+    
+    if (useHuggingFace) {
+      // Hugging Face Inference API
+      model = process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct'
+      apiUrl = `https://api-inference.huggingface.co/models/${model}`
+      apiKey = process.env.HUGGINGFACE_API_KEY || ''
+      if (!apiKey) {
+        return NextResponse.json({ 
+          error: 'Hugging Face API key not configured. Please add HUGGINGFACE_API_KEY to your .env.local file' 
+        }, { status: 500 })
+      }
+    } else if (useLMStudio) {
+      // LM Studio (local)
+      apiUrl = process.env.LM_STUDIO_URL || 'http://localhost:1234/v1/chat/completions'
+      apiKey = 'lm-studio'
+      model = process.env.LM_STUDIO_MODEL || 'local-model'
+    } else {
+      // OpenAI
+      apiUrl = 'https://api.openai.com/v1/chat/completions'
+      apiKey = process.env.OPENAI_API_KEY || ''
+      model = 'gpt-4o-mini'
+      if (!apiKey) {
+        return NextResponse.json({ 
+          error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file or set USE_LM_STUDIO=true or USE_HUGGINGFACE=true' 
+        }, { status: 500 })
+      }
     }
 
     // Prepare batch data for AI - handle both Cambridge and Oxford formats
@@ -99,25 +117,19 @@ export async function POST(request: NextRequest) {
       return `\n--- Word ${index + 1}: ${data.word} (from ${source}) ---\n${formattedData}`
     }).join('\n')
 
-    console.log(`\n🤖 Sending ${successfulScrapes.length} words to ${useLMStudio ? 'LM Studio' : 'OpenAI'} for batch processing...`)
+    const serviceName = useHuggingFace ? 'Hugging Face' : (useLMStudio ? 'LM Studio' : 'OpenAI')
+    console.log(`\n🤖 Sending ${successfulScrapes.length} words to ${serviceName} for batch processing...`)
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
     
-    if (!useLMStudio || process.env.OPENAI_API_KEY) {
+    if (useHuggingFace || (!useLMStudio && apiKey)) {
       headers['Authorization'] = `Bearer ${apiKey}`
     }
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: `You are a dictionary data processor. You receive scraped data for MULTIPLE words from Cambridge and/or Oxford Dictionary and must convert ALL of them to structured JSON format.
+    // Prepare prompts
+    const systemPrompt = `You are a dictionary data processor. You receive scraped data for MULTIPLE words from Cambridge and/or Oxford Dictionary and must convert ALL of them to structured JSON format.
 
 Return ONLY a valid JSON array with this exact structure:
 [
@@ -140,20 +152,49 @@ CRITICAL Rules:
 - For usage_tips: use the first example sentence from the scraped data
 - Return ONLY the JSON array, no markdown code blocks or additional text
 - Process ALL words provided`
+    
+    const userPrompt = `Here is the data scraped from Cambridge Dictionary for ${successfulScrapes.length} words:\n${batchScrapedData}\n\nConvert ALL of these words to the required JSON array format.`
+
+    let requestBody: any
+    
+    if (useHuggingFace) {
+      // Hugging Face uses a simpler text-to-text format
+      requestBody = {
+        inputs: `${systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant:`,
+        parameters: {
+          max_new_tokens: 3000,
+          temperature: 0.2,
+          return_full_text: false
+        }
+      }
+    } else {
+      // OpenAI/LM Studio use chat completions format
+      requestBody = {
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
           },
           {
             role: 'user',
-            content: `Here is the data scraped from Cambridge Dictionary for ${successfulScrapes.length} words:\n${batchScrapedData}\n\nConvert ALL of these words to the required JSON array format.`
+            content: userPrompt
           }
         ],
         temperature: 0.2,
         max_tokens: 3000 // Increased for batch processing
-      })
+      }
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error(`❌ ${useLMStudio ? 'LM Studio' : 'OpenAI'} Error:`, errorData)
+      console.error(`❌ ${serviceName} Error:`, errorData)
       
       // Fallback: use scraped data directly
       console.log('📝 Using scraped data as fallback (no AI processing)')
@@ -175,7 +216,16 @@ CRITICAL Rules:
     }
 
     const data = await response.json()
-    const content = data.choices[0]?.message?.content
+    
+    // Extract content based on API response format
+    let content: string
+    if (useHuggingFace) {
+      // Hugging Face returns array or object with generated_text
+      content = Array.isArray(data) ? data[0]?.generated_text : data.generated_text
+    } else {
+      // OpenAI/LM Studio format
+      content = data.choices[0]?.message?.content
+    }
 
     if (!content) {
       console.error('❌ No response from AI')
