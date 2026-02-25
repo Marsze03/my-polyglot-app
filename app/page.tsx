@@ -691,7 +691,7 @@ export default function Home() {
               <>
                 <button
                   onClick={() => setShowIncompleteList(true)}
-                  className="px-5 py-2.5 bg-amber-50 dark:bg-amber-900/20 backdrop-blur-sm border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all duration-300 font-medium text-sm flex items-center gap-2"
+                  className="px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 backdrop-blur-sm border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all duration-300 font-medium text-sm flex items-center gap-2 relative"
                   title="View list of incomplete words"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -699,12 +699,12 @@ export default function Home() {
                     <polyline points="14 2 14 8 20 8"/>
                     <line x1="9" y1="15" x2="15" y2="15"/>
                   </svg>
-                  <span>Show Incomplete ({words.filter(w => !hasContent(w.meaning_primary) || !hasContent(w.part_of_speech)).length})</span>
+                  <span className="absolute -top-1 -right-1 bg-amber-600 dark:bg-amber-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">{words.filter(w => !hasContent(w.meaning_primary) || !hasContent(w.part_of_speech)).length}</span>
                 </button>
                 <button
                   onClick={handleBatchFetch}
                   disabled={batchFetching || words.length === 0}
-                  className="px-5 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center gap-2"
+                  className="px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-700 dark:text-slate-300 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center gap-2"
                   title={`Fill info for ${words.filter(w => !hasContent(w.meaning_primary) || !hasContent(w.part_of_speech)).length} incomplete words`}
                 >
                 {batchFetching ? (
@@ -721,7 +721,7 @@ export default function Home() {
                       <polyline points="16 18 22 12 16 6"/>
                       <polyline points="8 6 2 12 8 18"/>
                     </svg>
-                    <span>Fill All Info ({words.filter(w => !hasContent(w.meaning_primary) || !hasContent(w.part_of_speech)).length})</span>
+                    <span>Auto-Fill ({words.filter(w => !hasContent(w.meaning_primary) || !hasContent(w.part_of_speech)).length})</span>
                   </>
                 )}
               </button>
@@ -729,30 +729,32 @@ export default function Home() {
             )}
           </div>
 
-          <button
-            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-            className="p-3 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all duration-300 shadow-sm cursor-pointer"
-            aria-label="Toggle Theme"
-          >
-            {isMounted && resolvedTheme === 'dark' ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              className="p-3 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all duration-300 shadow-sm cursor-pointer"
+              aria-label="Toggle Theme"
+            >
+              {isMounted && resolvedTheme === 'dark' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              )}
+            </button>
 
-          <button
-            onClick={signOut}
-            className="p-3 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-all duration-300 shadow-sm cursor-pointer"
-            aria-label="Sign Out"
-            title="Sign Out"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </button>
+            <button
+              onClick={signOut}
+              className="p-3 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-all duration-300 shadow-sm cursor-pointer"
+              aria-label="Sign Out"
+              title="Sign Out"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Header */}
