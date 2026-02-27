@@ -10,7 +10,7 @@ export interface OfflineVocab {
   synced: boolean
 }
 
-const STORAGE_KEY = 'polyglot_offline_vocabs'
+const STORAGE_KEY = 'verba_offline_vocabs'
 
 export function saveOfflineVocab(vocab: Omit<OfflineVocab, 'id' | 'created_at' | 'synced'>): OfflineVocab {
   const offlineVocabs = getOfflineVocabs()

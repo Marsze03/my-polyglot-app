@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Polyglot — Master Languages One Word at a Time",
+  title: "Verba — Turn PDFs into Vocabulary Lists",
   description: "Build your vocabulary effortlessly with AI-powered definitions, smart quizzes, and offline access.",
   manifest: "/manifest.json",
   themeColor: "#0f172a",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Polyglot",
+    title: "Verba",
   },
 };
 

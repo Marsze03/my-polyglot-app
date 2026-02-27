@@ -1,4 +1,4 @@
-const CACHE_NAME = 'polyglot-v1';
+const CACHE_NAME = 'verba-v1';
 const urlsToCache = [
   '/',
   '/offline',

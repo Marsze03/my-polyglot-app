@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
 import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
+import { scrapeGoogleTranslate, formatGoogleTranslateData } from '@/lib/google-translate-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
+import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,44 +33,89 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Word is required' }, { status: 400 })
     }
 
-    // Try both dictionaries in parallel for faster results
-    console.log(`📖 Searching both Cambridge and Oxford Dictionaries for: ${word}`)
+    // Try all three dictionaries in parallel for faster results
+    console.log(`📖 Searching Cambridge, Oxford, and Google Translate for: ${word}`)
     
-    const [cambridgeData, oxfordData] = await Promise.all([
+    const [cambridgeData, oxfordData, googleData] = await Promise.all([
       scrapeCambridgeDictionary(word),
-      scrapeOxfordDictionary(word)
+      scrapeOxfordDictionary(word),
+      scrapeGoogleTranslate(word)
     ])
     
-    // Determine which source to use (prefer the one that found the word)
-    let dictionaryData, scrapedDataText, source
+    // Prepare sources for ranking
+    const sources: DefinitionSource[] = []
     
-    if (cambridgeData.found && oxfordData.found) {
-      // Both found - use Cambridge as primary, Oxford as fallback for missing data
-      console.log('✅ Found in both dictionaries, using Cambridge as primary')
-      dictionaryData = cambridgeData
-      scrapedDataText = formatCambridgeData(cambridgeData)
-      source = 'Cambridge Dictionary'
-      
-      // Fill in missing data from Oxford if available
-      if (!dictionaryData.cefrLevel && oxfordData.cefrLevel) {
-        dictionaryData.cefrLevel = oxfordData.cefrLevel
-        scrapedDataText += `\n(CEFR level from Oxford: ${oxfordData.cefrLevel})`
-        source = 'Cambridge & Oxford Dictionaries'
-      }
-    } else if (cambridgeData.found) {
-      console.log('✅ Found in Cambridge Dictionary only')
-      dictionaryData = cambridgeData
-      scrapedDataText = formatCambridgeData(cambridgeData)
-      source = 'Cambridge Dictionary'
-    } else if (oxfordData.found) {
-      console.log('✅ Found in Oxford Dictionary only')
-      dictionaryData = oxfordData
-      scrapedDataText = formatOxfordData(oxfordData)
-      source = 'Oxford Dictionary'
-    } else {
+    if (cambridgeData.found && cambridgeData.definition) {
+      sources.push({
+        source: 'Cambridge Dictionary',
+        definition: cambridgeData.definition,
+        partOfSpeech: cambridgeData.partOfSpeech,
+        examples: cambridgeData.examples,
+        cefrLevel: cambridgeData.cefrLevel,
+        pronunciation: cambridgeData.pronunciation,
+      })
+    }
+    
+    if (oxfordData.found && oxfordData.definition) {
+      sources.push({
+        source: 'Oxford Dictionary',
+        definition: oxfordData.definition,
+        partOfSpeech: oxfordData.partOfSpeech,
+        examples: oxfordData.examples,
+        cefrLevel: oxfordData.cefrLevel,
+        pronunciation: oxfordData.pronunciation,
+      })
+    }
+    
+    if (googleData.found && googleData.definition) {
+      sources.push({
+        source: 'Google Translate/Dictionary API',
+        definition: googleData.definition,
+        partOfSpeech: googleData.partOfSpeech,
+        examples: googleData.examples,
+      })
+    }
+    
+    // Check if we found the word in at least one source
+    if (sources.length === 0) {
       return NextResponse.json({ 
-        error: `Word "${word}" not found in Cambridge or Oxford Dictionary. Please check spelling.` 
+        error: `Word "${word}" not found in any dictionary. Please check spelling.` 
       }, { status: 404 })
+    }
+    
+    // Use the definition ranker to select the best definition
+    console.log(`✅ Found in ${sources.length} source(s), selecting best definition...`)
+    const mergedData = mergeDefinitionSources(sources)
+    
+    // Prepare data for AI processing
+    let scrapedDataText = `Word: ${word}\n`
+    scrapedDataText += `Source: ${mergedData.source}\n`
+    if (mergedData.pronunciation) {
+      scrapedDataText += `Pronunciation: ${mergedData.pronunciation}\n`
+    }
+    if (mergedData.partOfSpeech) {
+      scrapedDataText += `Part of Speech: ${mergedData.partOfSpeech}\n`
+    }
+    if (mergedData.cefrLevel) {
+      scrapedDataText += `CEFR Level: ${mergedData.cefrLevel}\n`
+    }
+    scrapedDataText += `Definition: ${mergedData.definition}\n`
+    if (mergedData.examples && mergedData.examples.length > 0) {
+      scrapedDataText += `Examples:\n`
+      mergedData.examples.forEach((ex, i) => {
+        scrapedDataText += `  ${i + 1}. ${ex}\n`
+      })
+    }
+    
+    const source = mergedData.source
+    const dictionaryData = {
+      word,
+      partOfSpeech: mergedData.partOfSpeech,
+      cefrLevel: mergedData.cefrLevel,
+      definition: mergedData.definition,
+      examples: mergedData.examples,
+      pronunciation: mergedData.pronunciation,
+      found: true,
     }
 
     console.log(`✅ Dictionary data from ${source}:`, dictionaryData)
