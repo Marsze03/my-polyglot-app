@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Minimalist background -->
+  <rect width="128" height="128" rx="24" fill="#0f172a"/>
+  
+  <!-- Bold, clear V -->
+  <path d="M 36 38 L 54 86 L 64 64 L 74 86 L 92 38 L 82 38 L 70 72 L 64 54 L 58 72 L 46 38 Z" 
+        fill="#f8fafc" 
+        stroke="none"/>
+  
+  <!-- Clear underline accent -->
+  <rect x="42" y="92" width="44" height="3" fill="#f8fafc" opacity="0.5" rx="1.5"/>
+</svg>
