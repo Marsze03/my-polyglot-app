@@ -6,6 +6,14 @@ import { scrapeUrbanDictionary, formatUrbanDictionaryData, shouldPrioritizeUrban
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
+// Helper function to truncate definition to max 20 words
+function truncateDefinition(text: string, maxWords: number = 20): string {
+  if (!text) return text
+  const words = text.trim().split(/\s+/)
+  if (words.length <= maxWords) return text
+  return words.slice(0, maxWords).join(' ') + '...'
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting: 30 requests per minute per IP
@@ -337,7 +345,7 @@ Rules:
       data: {
         part_of_speech: processedData.part_of_speech || '',
         cefr_level: processedData.cefr_level || 'n.a.',
-        meaning_primary: processedData.meaning_primary || '',
+        meaning_primary: truncateDefinition(processedData.meaning_primary || ''),
         usage_tips: processedData.usage_tips || ''
       },
       source: source + ' + AI Processing'

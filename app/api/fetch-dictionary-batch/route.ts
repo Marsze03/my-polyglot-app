@@ -6,6 +6,14 @@ import { scrapeUrbanDictionary, formatUrbanDictionaryData } from '@/lib/urban-di
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
+// Helper function to truncate definition to max 20 words
+function truncateDefinition(text: string, maxWords: number = 20): string {
+  if (!text) return text
+  const words = text.trim().split(/\s+/)
+  if (words.length <= maxWords) return text
+  return words.slice(0, maxWords).join(' ') + '...'
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting: 10 batch requests per minute per IP (stricter for batch)
@@ -280,7 +288,7 @@ CRITICAL Rules:
         word: data.word,
         part_of_speech: (data as any).partOfSpeech || '',
         cefr_level: (data as any).cefrLevel || 'n.a.',
-        meaning_primary: (data as any).definition || '',
+        meaning_primary: truncateDefinition((data as any).definition || ''),
         usage_tips: (data as any).examples?.[0] || ''
       }))
       
@@ -312,7 +320,7 @@ CRITICAL Rules:
         word: data.word,
         part_of_speech: (data as any).partOfSpeech || '',
         cefr_level: (data as any).cefrLevel || 'n.a.',
-        meaning_primary: (data as any).definition || '',
+        meaning_primary: truncateDefinition((data as any).definition || ''),
         usage_tips: (data as any).examples?.[0] || ''
       }))
       
@@ -342,7 +350,7 @@ CRITICAL Rules:
         word: data.word,
         part_of_speech: (data as any).partOfSpeech || '',
         cefr_level: (data as any).cefrLevel || 'n.a.',
-        meaning_primary: (data as any).definition || '',
+        meaning_primary: truncateDefinition((data as any).definition || ''),
         usage_tips: (data as any).examples?.[0] || ''
       }))
     }
@@ -356,7 +364,7 @@ CRITICAL Rules:
         word: item.word || scraped?.word || '',
         part_of_speech: item.part_of_speech || scraped?.partOfSpeech || '',
         cefr_level: item.cefr_level || scraped?.cefrLevel || 'n.a.',
-        meaning_primary: item.meaning_primary || scraped?.definition || '',
+        meaning_primary: truncateDefinition(item.meaning_primary || scraped?.definition || ''),
         usage_tips: item.usage_tips || scraped?.examples?.[0] || ''
       }
     })
