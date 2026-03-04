@@ -72,7 +72,7 @@ export async function scrapeCambridgeDictionary(word: string): Promise<Cambridge
     const defBlock = $('.def-block').first()
     const definition = defBlock.find('.def').first()
     if (definition.length > 0) {
-      result.definition = definition.text().trim()
+      result.definition = definition.text().trim().replace(/:$/, '') // Remove trailing colon
     }
 
     // Extract example sentences

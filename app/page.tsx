@@ -490,6 +490,53 @@ export default function Home() {
     }
   }
 
+  // Function to refetch all words to remove trailing colons and update definitions
+  const handleRefetchAll = async () => {
+    if (words.length === 0) {
+      setError('No words to refetch!')
+      return
+    }
+
+    const confirmed = confirm(
+      `🔄 This will refetch all ${words.length} words from the dictionary to update their definitions.\n\n` +
+      `This might take a few minutes. Continue?`
+    )
+
+    if (!confirmed) return
+
+    try {
+      setBatchFetching(true)
+      setError(null)
+
+      console.log(`🚀 Starting refetch for all ${words.length} words...`)
+
+      const response = await fetch('/api/refetch-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to refetch all words')
+      }
+
+      console.log(`✅ Refetch complete: ${result.updated} words updated`)
+      
+      // Refresh the word list
+      await fetchWords()
+      
+      alert(`✅ Successfully refetched and updated ${result.updated} out of ${words.length} words!`)
+    } catch (err) {
+      console.error('Refetch error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to refetch all words')
+    } finally {
+      setBatchFetching(false)
+    }
+  }
+
   // Function to normalize CEFR levels in database
   const handleNormalizeCEFR = async () => {
     try {
@@ -911,6 +958,33 @@ export default function Home() {
                 )}
               </button>
               </>
+            )}
+            
+            {/* Refetch All Button */}
+            {words.length > 0 && (
+              <button
+                onClick={handleRefetchAll}
+                disabled={batchFetching || words.length === 0}
+                className="px-4 py-2.5 bg-purple-50 dark:bg-purple-900/20 backdrop-blur-sm border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-400 rounded-full hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center gap-2"
+                title="Refetch all words to update definitions"
+              >
+                {batchFetching ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Refetching...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                    <span>Refetch All</span>
+                  </>
+                )}
+              </button>
             )}
           </div>
 

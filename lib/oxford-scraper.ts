@@ -80,7 +80,7 @@ export async function scrapeOxfordDictionary(word: string): Promise<OxfordData> 
     // Extract the first definition
     const defElement = $('.def').first()
     if (defElement.length > 0) {
-      result.definition = defElement.text().trim()
+      result.definition = defElement.text().trim().replace(/:$/, '') // Remove trailing colon
     }
 
     // Extract example sentences
