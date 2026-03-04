@@ -112,22 +112,68 @@ export function selectBestDefinition(sources: DefinitionSource[]): DefinitionSou
 }
 
 /**
+ * Checks if all sources provide only low-quality (form-change) definitions
+ * @param sources - Array of definition sources
+ * @returns true if all definitions are low quality
+ */
+export function allSourcesAreLowQuality(sources: DefinitionSource[]): boolean {
+  if (!sources || sources.length === 0) return true
+  
+  const validSources = sources.filter(s => s.definition && s.definition.trim().length > 0)
+  if (validSources.length === 0) return true
+  
+  // Check if ALL sources have low scores (< 30) or are form changes
+  const allLowQuality = validSources.every(source => {
+    const score = scoreDefinitionQuality(source.definition)
+    const isFormChange = isFormChangeDefinition(source.definition)
+    return score < 30 || isFormChange
+  })
+  
+  if (allLowQuality) {
+    console.log('⚠️ WARNING: All dictionary sources returned low-quality definitions!')
+    console.log('   This word may need AI enhancement or specialized sources.')
+  }
+  
+  return allLowQuality
+}
+
+/**
+ * Gets the highest quality score among all sources
+ * @param sources - Array of definition sources
+ * @returns The highest score found (0-100)
+ */
+export function getHighestQualityScore(sources: DefinitionSource[]): number {
+  if (!sources || sources.length === 0) return 0
+  
+  const validSources = sources.filter(s => s.definition && s.definition.trim().length > 0)
+  if (validSources.length === 0) return 0
+  
+  const scores = validSources.map(source => scoreDefinitionQuality(source.definition))
+  return Math.max(...scores)
+}
+
+/**
  * Merges data from multiple sources, prioritizing quality
  * @param sources - Array of definition sources
- * @returns Merged definition data
+ * @returns Merged definition data with needsAIEnhancement flag
  */
-export function mergeDefinitionSources(sources: DefinitionSource[]): DefinitionSource {
+export function mergeDefinitionSources(sources: DefinitionSource[]): DefinitionSource & { needsAIEnhancement?: boolean } {
   const bestDef = selectBestDefinition(sources)
   
   if (!bestDef) {
     return {
       source: 'None',
       definition: '',
+      needsAIEnhancement: true,
     }
   }
   
   // Start with the best definition as base
-  const merged: DefinitionSource = { ...bestDef }
+  const merged: DefinitionSource & { needsAIEnhancement?: boolean } = { ...bestDef }
+  
+  // Check if AI enhancement is needed
+  const highestScore = getHighestQualityScore(sources)
+  merged.needsAIEnhancement = highestScore < 30 || allSourcesAreLowQuality(sources)
   
   // Collect data from other sources to fill gaps
   for (const source of sources) {

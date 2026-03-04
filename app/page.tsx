@@ -742,6 +742,18 @@ export default function Home() {
               )}
             </button>
 
+            <a
+              href="/settings"
+              className="p-3 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-400 hover:text-blue-500 transition-all duration-300 shadow-sm cursor-pointer"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6m5.196-15.804L13.536 6.86m-3.072 3.072l-3.66 3.66m15.804 5.196l-3.66-3.66m-3.072-3.072l-3.66-3.66M23 12h-6m-6 0H1m15.804 5.196l-3.66-3.66m-3.072-3.072l-3.66-3.66"/>
+              </svg>
+            </a>
+
             <button
               onClick={signOut}
               className="p-3 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-all duration-300 shadow-sm cursor-pointer"
@@ -1009,14 +1021,14 @@ export default function Home() {
                     {recentWords.map((word, index) => (
                       <div
                         key={word.id}
-                        className="group bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-700/30 hover:shadow-lg dark:hover:shadow-slate-900/40 hover:border-slate-300/50 dark:hover:border-slate-600/50 transition-all duration-300 animate-fadeIn"
+                        onClick={() => handleEditWord(word)}
+                        className="group bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-700/30 hover:shadow-lg dark:hover:shadow-slate-900/40 hover:border-slate-300/50 dark:hover:border-slate-600/50 hover:scale-105 hover:cursor-pointer transition-all duration-300 animate-fadeIn"
                         style={{ animationDelay: `${index * 0.05}s` }}
+                        title="Click to edit"
                       >
                         <div className="flex items-start justify-between mb-3">
                           <h3 
-                            className="text-2xl font-brand font-medium text-slate-900 dark:text-slate-100 cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                            onClick={() => handleEditWord(word)}
-                            title="Click to edit"
+                            className="text-2xl font-brand font-medium text-slate-900 dark:text-slate-100 transition-colors"
                           >
                             {word.word}
                             {word.part_of_speech && (
@@ -1034,7 +1046,10 @@ export default function Home() {
                             )}
                           </h3>
                           <button
-                            onClick={() => handleDeleteWord(word.id)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteWord(word.id)
+                            }}
                             className="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-red-500 transition-all duration-300 text-sm"
                             title="Delete"
                           >
@@ -1062,14 +1077,14 @@ export default function Home() {
                   {alphabeticalWords.map((word, index) => (
                     <div
                       key={word.id}
-                      className="group bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-700/30 hover:shadow-lg dark:hover:shadow-slate-900/40 hover:border-slate-300/50 dark:hover:border-slate-600/50 transition-all duration-300 animate-fadeIn"
+                      onClick={() => handleEditWord(word)}
+                      className="group bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl p-6 border border-slate-200/50 dark:border-slate-700/30 hover:shadow-lg dark:hover:shadow-slate-900/40 hover:border-slate-300/50 dark:hover:border-slate-600/50 hover:scale-105 hover:cursor-pointer transition-all duration-300 animate-fadeIn"
                       style={{ animationDelay: `${index * 0.05}s` }}
+                      title="Click to edit"
                     >
                       <div className="flex items-start justify-between mb-3">
                         <h3 
-                          className="text-2xl font-brand font-medium text-slate-900 dark:text-slate-100 cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                          onClick={() => handleEditWord(word)}
-                          title="Click to edit"
+                          className="text-2xl font-brand font-medium text-slate-900 dark:text-slate-100 transition-colors"
                         >
                           {word.word}
                           {word.part_of_speech && (
@@ -1087,7 +1102,10 @@ export default function Home() {
                           )}
                         </h3>
                         <button
-                          onClick={() => handleDeleteWord(word.id)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteWord(word.id)
+                          }}
                           className="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-red-500 transition-all duration-300 text-sm"
                           title="Delete"
                         >
@@ -1286,7 +1304,7 @@ export default function Home() {
                       onClick={handleFetchDictionary}
                       disabled={fetchingDictionary || !editFormData.word.trim()}
                       className="px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:from-blue-600 hover:to-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm whitespace-nowrap shadow-md flex items-center gap-2"
-                      title="Fetch dictionary info from Cambridge Dictionary using AI"
+                      title="Fetch dictionary info from reliable sources using AI"
                     >
                       {fetchingDictionary ? (
                         <>
@@ -1309,7 +1327,7 @@ export default function Home() {
                     </button>
                   </div>
                   <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                    Click "Fetch Info" to auto-fill data from Cambridge Dictionary using AI
+                    Click "Fetch Info" to auto-fill data from reliable sources using AI
                   </p>
                 </div>
 

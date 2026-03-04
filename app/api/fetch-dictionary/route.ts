@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
 import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
 import { scrapeGoogleTranslate, formatGoogleTranslateData } from '@/lib/google-translate-scraper'
+import { scrapeUrbanDictionary, formatUrbanDictionaryData, shouldPrioritizeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
@@ -33,13 +34,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Word is required' }, { status: 400 })
     }
 
-    // Try all three dictionaries in parallel for faster results
-    console.log(`📖 Searching Cambridge, Oxford, and Google Translate for: ${word}`)
+    // Try all four dictionaries in parallel for faster results
+    console.log(`📖 Searching Cambridge, Oxford, Google, and Urban Dictionary for: ${word}`)
     
-    const [cambridgeData, oxfordData, googleData] = await Promise.all([
+    const [cambridgeData, oxfordData, googleData, urbanData] = await Promise.all([
       scrapeCambridgeDictionary(word),
       scrapeOxfordDictionary(word),
-      scrapeGoogleTranslate(word)
+      scrapeGoogleTranslate(word),
+      scrapeUrbanDictionary(word)
     ])
     
     // Prepare sources for ranking
@@ -73,6 +75,16 @@ export async function POST(request: NextRequest) {
         definition: googleData.definition,
         partOfSpeech: googleData.partOfSpeech,
         examples: googleData.examples,
+      })
+    }
+    
+    // Urban Dictionary can be particularly valuable for jargon and colloquial terms
+    if (urbanData.found && urbanData.definition) {
+      sources.push({
+        source: 'Urban Dictionary',
+        definition: urbanData.definition,
+        partOfSpeech: 'informal',
+        examples: urbanData.examples,
       })
     }
     
@@ -168,8 +180,42 @@ export async function POST(request: NextRequest) {
     const serviceName = useHuggingFace ? 'Hugging Face' : (useLMStudio ? 'LM Studio' : 'OpenAI')
     console.log(`🤖 Sending to ${serviceName} for processing...`)
 
-    // Prepare the prompt content
-    const systemPrompt = `You are a dictionary data processor. You receive scraped data from Cambridge Dictionary and must convert it to a structured JSON format.
+    // Check if AI enhancement is needed (all sources gave low-quality definitions)
+    const needsEnhancement = mergedData.needsAIEnhancement
+    if (needsEnhancement) {
+      console.log('⚡ AI Enhancement Mode: Will generate contextual definition')
+    }
+
+    // Prepare the prompt content based on whether enhancement is needed
+    let systemPrompt: string
+    
+    if (needsEnhancement) {
+      // Enhanced mode: AI should provide a more contextual, real-world definition
+      systemPrompt = `You are an intelligent dictionary assistant. The word provided has only grammatical definitions (like "past tense of X") from standard dictionaries, but we need the actual CONTEXTUAL MEANING.
+
+Your task: Provide the real-world, practical meaning of this word as it's commonly used.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "part_of_speech": "noun" | "verb" | "adjective" | "adverb" | "preposition" | "conjunction" | "pronoun" | "interjection",
+  "cefr_level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2",
+  "meaning_primary": "the actual contextual meaning (NOT just 'past tense of...')",
+  "usage_tips": "a practical example sentence showing real-world usage"
+}
+
+CRITICAL RULES:
+- DO NOT just say "past participle of X" or "present participle of X"
+- Instead, explain what the word MEANS in practice
+- For example, "cramming" should be explained as "studying intensively in a short time before an exam", NOT "present participle of cram"
+- Focus on how the word is actually used in real life
+- Estimate CEFR level based on word complexity and usage context
+- Provide a realistic, natural example sentence
+- Return ONLY the JSON object, no markdown code blocks or additional text
+
+The dictionary data below may be incomplete or just show word forms. Use your knowledge to provide the REAL meaning.`
+    } else {
+      // Standard mode: Process dictionary data as usual
+      systemPrompt = `You are a dictionary data processor. You receive scraped data from multiple dictionaries and must convert it to a structured JSON format.
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -186,6 +232,7 @@ Rules:
 - For meaning_primary: use the first definition exactly as scraped
 - For usage_tips: use the first example sentence from the scraped data, or create a brief usage note if no examples
 - Return ONLY the JSON object, no markdown code blocks or additional text`
+    }
     
     const userPrompt = `Here is the data scraped from a dictionary:\n\n${scrapedDataText}\n\nConvert this to the required JSON format.`
 

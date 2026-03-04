@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
 import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
 import { scrapeGoogleTranslate, formatGoogleTranslateData } from '@/lib/google-translate-scraper'
+import { scrapeUrbanDictionary, formatUrbanDictionaryData } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
@@ -37,17 +38,18 @@ export async function POST(request: NextRequest) {
     console.log(`🚀 Starting batch dictionary fetch for ${words.length} words`)
     console.log('='.repeat(70))
 
-    // Step 1: Scrape Cambridge, Oxford, and Google Translate for all words
+    // Step 1: Scrape all four dictionary sources for all words
     const scrapedResults = []
     for (const word of words) {
       console.log(`\n📖 [${scrapedResults.length + 1}/${words.length}] Searching: ${word}`)
       
       try {
-        // Try all three dictionaries in parallel
-        const [cambridgeData, oxfordData, googleData] = await Promise.all([
+        // Try all four dictionaries in parallel
+        const [cambridgeData, oxfordData, googleData, urbanData] = await Promise.all([
           scrapeCambridgeDictionary(word),
           scrapeOxfordDictionary(word),
-          scrapeGoogleTranslate(word)
+          scrapeGoogleTranslate(word),
+          scrapeUrbanDictionary(word)
         ])
         
         // Prepare sources for ranking
@@ -84,6 +86,15 @@ export async function POST(request: NextRequest) {
           })
         }
         
+        if (urbanData.found && urbanData.definition) {
+          sources.push({
+            source: 'Urban Dictionary',
+            definition: urbanData.definition,
+            partOfSpeech: 'informal',
+            examples: urbanData.examples,
+          })
+        }
+        
         // Check if we found the word in at least one source
         if (sources.length === 0) {
           console.log(`  ❌ Not found in any dictionary`)
@@ -103,9 +114,13 @@ export async function POST(request: NextRequest) {
           examples: mergedData.examples,
           pronunciation: mergedData.pronunciation,
           found: true,
+          needsAIEnhancement: mergedData.needsAIEnhancement, // Track if AI enhancement is needed
         }
         
         console.log(`     ${finalData.partOfSpeech || 'unknown'} - ${finalData.definition?.substring(0, 50)}...`)
+        if (finalData.needsAIEnhancement) {
+          console.log(`     ⚡ AI enhancement recommended`)
+        }
         scrapedResults.push({ ...finalData, source: mergedData.source })
         
       } catch (error) {
@@ -183,7 +198,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare prompts
-    const systemPrompt = `You are a dictionary data processor. You receive scraped data for MULTIPLE words from Cambridge and/or Oxford Dictionary and must convert ALL of them to structured JSON format.
+    // Check if any words need AI enhancement
+    const wordsNeedingEnhancement = successfulScrapes.filter((r: any) => r.needsAIEnhancement)
+    const enhancementNeeded = wordsNeedingEnhancement.length > 0
+    
+    if (enhancementNeeded) {
+      console.log(`   ⚡ ${wordsNeedingEnhancement.length} word(s) need AI enhancement for better definitions`)
+    }
+    
+    const systemPrompt = `You are an intelligent dictionary assistant processing MULTIPLE words. Some words may only have grammatical definitions (like "past tense of X"), but you should provide ACTUAL CONTEXTUAL MEANINGS.
 
 Return ONLY a valid JSON array with this exact structure:
 [
@@ -191,19 +214,20 @@ Return ONLY a valid JSON array with this exact structure:
     "word": "the word",
     "part_of_speech": "noun" | "verb" | "adjective" | "adverb" | "preposition" | "conjunction" | "pronoun" | "interjection",
     "cefr_level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2",
-    "meaning_primary": "the primary definition",
-    "usage_tips": "example sentence in quotes"
+    "meaning_primary": "the actual contextual meaning or definition",
+    "usage_tips": "example sentence showing real-world usage"
   },
   ... (more words)
 ]
 
 CRITICAL Rules:
 - Return a JSON ARRAY with one object per word
-- Use the EXACT data from the Cambridge Dictionary scrape provided
 - For part_of_speech: convert to lowercase full word (e.g., "noun" not "n.")
-- For cefr_level: use the exact level if provided, otherwise estimate: basic words (A1-A2), common words (B1-B2), advanced words (C1-C2)
-- For meaning_primary: use the first definition exactly as scraped
-- For usage_tips: use the first example sentence from the scraped data
+- For cefr_level: use the exact level if provided, otherwise estimate based on complexity
+- For meaning_primary: If the dictionary only says "past participle of X" or similar, IGNORE that and provide the REAL CONTEXTUAL MEANING instead
+  * Example: "cramming" should be "studying intensively in a short time before an exam" NOT "present participle of cram"
+  * Example: "vetted" should be "examined or investigated carefully" NOT "past tense of vet"
+- For usage_tips: use scraped examples if available, or create a practical example sentence
 - Return ONLY the JSON array, no markdown code blocks or additional text
 - Process ALL words provided`
     

@@ -34,12 +34,19 @@ async function testWord(word) {
       console.log('  Meaning:', data.data.meaning_primary)
       console.log('  Usage Tips:', data.data.usage_tips)
       
-      // Check if we got a descriptive meaning vs. just "past simple of..."
+      // Check if we got a descriptive meaning vs. just "past simple of..." or "present participle of..."
       const isDescriptive = !data.data.meaning_primary.toLowerCase().includes('past simple of')
         && !data.data.meaning_primary.toLowerCase().includes('past tense of')
+        && !data.data.meaning_primary.toLowerCase().includes('present participle of')
+        && !data.data.meaning_primary.toLowerCase().includes('past participle of')
       
       console.log('\n📊 Quality Check:')
       console.log('  Is descriptive (not just tense change):', isDescriptive ? '✅ YES' : '❌ NO')
+      
+      // Special checks for specific words
+      if (word === 'cramming' && data.data.meaning_primary.toLowerCase().includes('study')) {
+        console.log('  ✨ EXCELLENT: Got study-related meaning for "cramming"!')
+      }
       
       if (isDescriptive) {
         console.log('\n🎉 The ranking system successfully prioritized a descriptive definition!')
@@ -58,9 +65,10 @@ async function testWord(word) {
 
 // Test words
 const testWords = [
-  'vetted',  // The problematic word mentioned by the user
-  'running', // Another past participle that might have the same issue
-  'tested',  // Another test case
+  'cramming', // The new problematic word - should get contextual meaning, not "present participle of cram"
+  'vetted',   // The original problematic word
+  'running',  // Another past participle that might have the same issue
+  'googled',  // Modern slang/jargon
 ]
 
 console.log('🧪 Definition Ranking Test Suite')
