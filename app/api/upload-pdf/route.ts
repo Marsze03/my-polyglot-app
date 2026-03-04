@@ -176,17 +176,24 @@ export async function POST(request: NextRequest) {
     const newWords = extractedWords.filter(
       word => !existingWords.has(word.toLowerCase())
     )
+    
+    const existingWordsList = extractedWords.filter(
+      word => existingWords.has(word.toLowerCase())
+    )
 
-    // If preview mode, just return the words without inserting
+    console.log(`   ${newWords.length} new words, ${existingWordsList.length} already in library`)
+
+    // If preview mode, return ALL extracted words (not just new ones)
+    // Let the user decide what to keep
     if (previewMode) {
       return NextResponse.json({
         preview: true,
         message: 'Words extracted for preview',
         total_extracted: extractedWords.length,
-        already_exists: extractedWords.length - newWords.length,
+        already_exists: existingWordsList.length,
         new_words: newWords.length,
-        words: newWords,
-        existing_words: extractedWords.filter(word => existingWords.has(word.toLowerCase()))
+        words: extractedWords, // Show all words, not just new ones
+        existing_words: existingWordsList
       })
     }
 

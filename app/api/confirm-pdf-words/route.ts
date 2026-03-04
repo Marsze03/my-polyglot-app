@@ -15,8 +15,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check which words already exist in the database
+    const { data: existingData, error: checkError } = await supabase
+      .from('vocab_library')
+      .select('word')
+    
+    if (checkError) {
+      console.error('Error checking existing words:', checkError)
+    }
+    
+    const existingWords = new Set(
+      existingData?.map(item => item.word.toLowerCase()) || []
+    )
+
+    // Filter out words that already exist
+    const newWords = words.filter(word => !existingWords.has(word.toLowerCase()))
+    
+    console.log(`📥 Confirming PDF import: ${words.length} total, ${newWords.length} new, ${words.length - newWords.length} duplicates`)
+
+    if (newWords.length === 0) {
+      return NextResponse.json({
+        message: 'All words already exist in your library',
+        count: 0,
+        words: []
+      })
+    }
+
     // Sanitize and prepare words for insertion
-    const wordsToInsert = words.map(word => ({
+    const wordsToInsert = newWords.map(word => ({
       word: word.trim().toLowerCase(),
       lang_id: 1 // Assuming English (lang_id 1)
     }))
@@ -38,7 +64,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       message: 'Words added successfully',
       count: insertedData?.length || 0,
-      words: insertedData || []
+      words: insertedData || [],
+      skipped: words.length - newWords.length
     })
 
   } catch (error) {

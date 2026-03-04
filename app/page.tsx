@@ -647,8 +647,11 @@ export default function Home() {
       await fetchWords()
 
       // Show success message
-      setError(`Successfully added ${result.count} words!`)
-      setTimeout(() => setError(null), 3000)
+      const message = result.skipped > 0 
+        ? `Successfully added ${result.count} new words! (${result.skipped} duplicates skipped)`
+        : `Successfully added ${result.count} words!`
+      setError(message)
+      setTimeout(() => setError(null), 5000)
 
     } catch (err) {
       console.error('Error confirming words:', err)
