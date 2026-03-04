@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
+    const previewMode = formData.get('preview') === 'true'
     
     if (!file) {
       return NextResponse.json(
@@ -112,6 +113,19 @@ export async function POST(request: NextRequest) {
     const newWords = extractedWords.filter(
       word => !existingWords.has(word.toLowerCase())
     )
+
+    // If preview mode, just return the words without inserting
+    if (previewMode) {
+      return NextResponse.json({
+        preview: true,
+        message: 'Words extracted for preview',
+        total_extracted: extractedWords.length,
+        already_exists: extractedWords.length - newWords.length,
+        new_words: newWords.length,
+        words: newWords,
+        existing_words: extractedWords.filter(word => existingWords.has(word.toLowerCase()))
+      })
+    }
 
     if (newWords.length === 0) {
       return NextResponse.json({

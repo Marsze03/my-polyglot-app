@@ -57,6 +57,9 @@ export default function Home() {
     already_exists: number
     new_words: number
   } | null>(null)
+  const [pdfPreviewWords, setPdfPreviewWords] = useState<string[]>([])
+  const [showPdfPreview, setShowPdfPreview] = useState(false)
+  const [editingPreviewWord, setEditingPreviewWord] = useState<{ index: number, value: string } | null>(null)
 
   // Helper function to check if a field has actual content (not empty or whitespace)
   const hasContent = (value: string | null | undefined): boolean => {
@@ -584,6 +587,7 @@ export default function Home() {
 
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('preview', 'true') // Enable preview mode
 
       const response = await fetch('/api/upload-pdf', {
         method: 'POST',
@@ -596,10 +600,15 @@ export default function Home() {
         throw new Error(result.error || 'Failed to process PDF')
       }
 
-      setPdfUploadResult(result)
-      
-      // Refresh the word list to show new words
-      await fetchWords()
+      // Show preview modal with extracted words
+      setPdfPreviewWords(result.words || [])
+      setShowPdfPreview(true)
+      setPdfUploadResult({
+        message: result.message,
+        total_extracted: result.total_extracted,
+        already_exists: result.already_exists,
+        new_words: result.new_words
+      })
 
       // Clear the file input
       event.target.value = ''
@@ -610,6 +619,62 @@ export default function Home() {
     } finally {
       setUploadingPDF(false)
     }
+  }
+
+  // Confirm and insert preview words into database
+  const handleConfirmPdfWords = async () => {
+    if (pdfPreviewWords.length === 0) return
+
+    try {
+      setUploadingPDF(true)
+      setError(null)
+
+      const response = await fetch('/api/confirm-pdf-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ words: pdfPreviewWords })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to add words')
+      }
+
+      // Close preview and refresh word list
+      setShowPdfPreview(false)
+      setPdfPreviewWords([])
+      await fetchWords()
+
+      // Show success message
+      setError(`Successfully added ${result.count} words!`)
+      setTimeout(() => setError(null), 3000)
+
+    } catch (err) {
+      console.error('Error confirming words:', err)
+      setError(err instanceof Error ? err.message : 'Failed to add words')
+    } finally {
+      setUploadingPDF(false)
+    }
+  }
+
+  // Remove word from preview list
+  const handleRemovePreviewWord = (index: number) => {
+    setPdfPreviewWords(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Update word in preview list
+  const handleUpdatePreviewWord = (index: number, newValue: string) => {
+    if (!newValue.trim()) return
+    setPdfPreviewWords(prev => prev.map((word, i) => i === index ? newValue.trim() : word))
+    setEditingPreviewWord(null)
+  }
+
+  // Cancel preview and close modal
+  const handleCancelPdfPreview = () => {
+    setShowPdfPreview(false)
+    setPdfPreviewWords([])
+    setPdfUploadResult(null)
   }
 
   // Filter words based on search query
@@ -663,6 +728,123 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 transition-colors duration-500">
+      {/* PDF Preview Modal */}
+      {showPdfPreview && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-slate-200 dark:border-slate-700">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Review Imported Words</h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {pdfPreviewWords.length} words • Edit or remove words before adding to your library
+                  </p>
+                </div>
+                <button
+                  onClick={handleCancelPdfPreview}
+                  className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Words List */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              {pdfPreviewWords.length === 0 ? (
+                <p className="text-center text-slate-500 dark:text-slate-400 py-8">
+                  No words to display. All extracted words already exist in your library.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {pdfPreviewWords.map((word, index) => (
+                    <div
+                      key={index}
+                      className="group flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all"
+                    >
+                      {editingPreviewWord?.index === index ? (
+                        <input
+                          type="text"
+                          value={editingPreviewWord.value}
+                          onChange={(e) => setEditingPreviewWord({ index, value: e.target.value })}
+                          onBlur={() => handleUpdatePreviewWord(index, editingPreviewWord.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleUpdatePreviewWord(index, editingPreviewWord.value)
+                            if (e.key === 'Escape') setEditingPreviewWord(null)
+                          }}
+                          autoFocus
+                          className="flex-1 px-2 py-1 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-600 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-300">{word}</span>
+                          <button
+                            onClick={() => setEditingPreviewWord({ index, value: word })}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-all"
+                            title="Edit word"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleRemovePreviewWord(index)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded transition-all"
+                            title="Remove word"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="18" y1="6" x2="6" y2="18"></line>
+                              <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+              <button
+                onClick={handleCancelPdfPreview}
+                className="px-6 py-2.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPdfWords}
+                disabled={pdfPreviewWords.length === 0 || uploadingPDF}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2"
+              >
+                {uploadingPDF ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Add {pdfPreviewWords.length} Words to Library
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!isMounted ? (
         <div className="max-w-5xl mx-auto">
           <div className="p-8 text-center text-slate-400 dark:text-slate-600">
