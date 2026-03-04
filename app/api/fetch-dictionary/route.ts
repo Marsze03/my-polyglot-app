@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
-import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
-import { scrapeGoogleTranslate, formatGoogleTranslateData } from '@/lib/google-translate-scraper'
-import { scrapeUrbanDictionary, formatUrbanDictionaryData, shouldPrioritizeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
+import { scrapeCambridgeDictionary } from '@/lib/cambridge-scraper'
+import { scrapeOxfordDictionary } from '@/lib/oxford-scraper'
+import { scrapeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
-import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
 // Helper function to truncate definition to max 20 words
 function truncateDefinition(text: string, maxWords: number = 20): string {
@@ -42,100 +40,69 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Word is required' }, { status: 400 })
     }
 
-    // Try all four dictionaries in parallel for faster results
-    console.log(`📖 Searching Cambridge, Oxford, Google, and Urban Dictionary for: ${word}`)
+    // Try dictionaries in priority order: Cambridge -> Oxford -> Urban
+    console.log(`📖 Searching dictionaries for: ${word}`)
     
-    const [cambridgeData, oxfordData, googleData, urbanData] = await Promise.all([
-      scrapeCambridgeDictionary(word),
-      scrapeOxfordDictionary(word),
-      scrapeGoogleTranslate(word),
-      scrapeUrbanDictionary(word)
-    ])
+    let dictionaryData: any = null
+    let source = ''
     
-    // Prepare sources for ranking
-    const sources: DefinitionSource[] = []
-    
+    // 1. Try Cambridge first (highest priority)
+    console.log(`   Trying Cambridge Dictionary...`)
+    const cambridgeData = await scrapeCambridgeDictionary(word)
     if (cambridgeData.found && cambridgeData.definition) {
-      sources.push({
-        source: 'Cambridge Dictionary',
-        definition: cambridgeData.definition,
-        partOfSpeech: cambridgeData.partOfSpeech,
-        examples: cambridgeData.examples,
-        cefrLevel: cambridgeData.cefrLevel,
-        pronunciation: cambridgeData.pronunciation,
-      })
+      console.log(`   ✅ Found in Cambridge Dictionary`)
+      dictionaryData = cambridgeData
+      source = 'Cambridge Dictionary'
     }
     
-    if (oxfordData.found && oxfordData.definition) {
-      sources.push({
-        source: 'Oxford Dictionary',
-        definition: oxfordData.definition,
-        partOfSpeech: oxfordData.partOfSpeech,
-        examples: oxfordData.examples,
-        cefrLevel: oxfordData.cefrLevel,
-        pronunciation: oxfordData.pronunciation,
-      })
+    // 2. If Cambridge fails, try Oxford
+    if (!dictionaryData) {
+      console.log(`   Trying Oxford Dictionary...`)
+      const oxfordData = await scrapeOxfordDictionary(word)
+      if (oxfordData.found && oxfordData.definition) {
+        console.log(`   ✅ Found in Oxford Dictionary`)
+        dictionaryData = oxfordData
+        source = 'Oxford Dictionary'
+      }
     }
     
-    if (googleData.found && googleData.definition) {
-      sources.push({
-        source: 'Google Translate/Dictionary API',
-        definition: googleData.definition,
-        partOfSpeech: googleData.partOfSpeech,
-        examples: googleData.examples,
-      })
+    // 3. If both fail, try Urban Dictionary as last resort
+    if (!dictionaryData) {
+      console.log(`   Trying Urban Dictionary...`)
+      const urbanData = await scrapeUrbanDictionary(word)
+      if (urbanData.found && urbanData.definition) {
+        console.log(`   ✅ Found in Urban Dictionary`)
+        dictionaryData = urbanData
+        source = 'Urban Dictionary'
+      }
     }
     
-    // Urban Dictionary can be particularly valuable for jargon and colloquial terms
-    if (urbanData.found && urbanData.definition) {
-      sources.push({
-        source: 'Urban Dictionary',
-        definition: urbanData.definition,
-        partOfSpeech: 'informal',
-        examples: urbanData.examples,
-      })
-    }
-    
-    // Check if we found the word in at least one source
-    if (sources.length === 0) {
+    // Check if we found the word in any dictionary
+    if (!dictionaryData) {
+      console.log(`❌ Word "${word}" not found in any dictionary`)
       return NextResponse.json({ 
-        error: `Word "${word}" not found in any dictionary. Please check spelling.` 
+        error: `Word "${word}" not found in Cambridge, Oxford, or Urban Dictionary` 
       }, { status: 404 })
     }
     
-    // Use the definition ranker to select the best definition
-    console.log(`✅ Found in ${sources.length} source(s), selecting best definition...`)
-    const mergedData = mergeDefinitionSources(sources)
-    
     // Prepare data for AI processing
     let scrapedDataText = `Word: ${word}\n`
-    scrapedDataText += `Source: ${mergedData.source}\n`
-    if (mergedData.pronunciation) {
-      scrapedDataText += `Pronunciation: ${mergedData.pronunciation}\n`
+    scrapedDataText += `Source: ${source}\n`
+    if (dictionaryData.pronunciation) {
+      scrapedDataText += `Pronunciation: ${dictionaryData.pronunciation}\n`
     }
-    if (mergedData.partOfSpeech) {
-      scrapedDataText += `Part of Speech: ${mergedData.partOfSpeech}\n`
+    if (dictionaryData.partOfSpeech) {
+      scrapedDataText += `Part of Speech: ${dictionaryData.partOfSpeech}\n`
     }
-    if (mergedData.cefrLevel) {
-      scrapedDataText += `CEFR Level: ${mergedData.cefrLevel}\n`
+    if (dictionaryData.cefrLevel) {
+      scrapedDataText += `CEFR Level: ${dictionaryData.cefrLevel}\n`
     }
-    scrapedDataText += `Definition: ${mergedData.definition}\n`
-    if (mergedData.examples && mergedData.examples.length > 0) {
+    scrapedDataText += `Definition: ${dictionaryData.definition}\n`
+    if (dictionaryData.examples && dictionaryData.examples.length > 0) {
       scrapedDataText += `Examples:\n`
-      mergedData.examples.forEach((ex, i) => {
+      dictionaryData.examples.forEach((ex: string, i: number) => {
         scrapedDataText += `  ${i + 1}. ${ex}\n`
       })
-    }
-    
-    const source = mergedData.source
-    const dictionaryData = {
-      word,
-      partOfSpeech: mergedData.partOfSpeech,
-      cefrLevel: mergedData.cefrLevel,
-      definition: mergedData.definition,
-      examples: mergedData.examples,
-      pronunciation: mergedData.pronunciation,
-      found: true,
     }
 
     console.log(`✅ Dictionary data from ${source}:`, dictionaryData)
@@ -188,42 +155,8 @@ export async function POST(request: NextRequest) {
     const serviceName = useHuggingFace ? 'Hugging Face' : (useLMStudio ? 'LM Studio' : 'OpenAI')
     console.log(`🤖 Sending to ${serviceName} for processing...`)
 
-    // Check if AI enhancement is needed (all sources gave low-quality definitions)
-    const needsEnhancement = mergedData.needsAIEnhancement
-    if (needsEnhancement) {
-      console.log('⚡ AI Enhancement Mode: Will generate contextual definition')
-    }
-
-    // Prepare the prompt content based on whether enhancement is needed
-    let systemPrompt: string
-    
-    if (needsEnhancement) {
-      // Enhanced mode: AI should provide a more contextual, real-world definition
-      systemPrompt = `You are an intelligent dictionary assistant. The word provided has only grammatical definitions (like "past tense of X") from standard dictionaries, but we need the actual CONTEXTUAL MEANING.
-
-Your task: Provide the real-world, practical meaning of this word as it's commonly used.
-
-Return ONLY a valid JSON object with this exact structure:
-{
-  "part_of_speech": "noun" | "verb" | "adjective" | "adverb" | "preposition" | "conjunction" | "pronoun" | "interjection",
-  "cefr_level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2",
-  "meaning_primary": "the actual contextual meaning (NOT just 'past tense of...')",
-  "usage_tips": "a practical example sentence showing real-world usage"
-}
-
-CRITICAL RULES:
-- DO NOT just say "past participle of X" or "present participle of X"
-- Instead, explain what the word MEANS in practice
-- For example, "cramming" should be explained as "studying intensively in a short time before an exam", NOT "present participle of cram"
-- Focus on how the word is actually used in real life
-- Estimate CEFR level based on word complexity and usage context
-- Provide a realistic, natural example sentence
-- Return ONLY the JSON object, no markdown code blocks or additional text
-
-The dictionary data below may be incomplete or just show word forms. Use your knowledge to provide the REAL meaning.`
-    } else {
-      // Standard mode: Process dictionary data as usual
-      systemPrompt = `You are a dictionary data processor. You receive scraped data from multiple dictionaries and must convert it to a structured JSON format.
+    // Prepare the prompt content
+    const systemPrompt = `You are an intelligent dictionary assistant processing dictionary data.
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -240,7 +173,6 @@ Rules:
 - For meaning_primary: use the first definition exactly as scraped
 - For usage_tips: use the first example sentence from the scraped data, or create a brief usage note if no examples
 - Return ONLY the JSON object, no markdown code blocks or additional text`
-    }
     
     const userPrompt = `Here is the data scraped from a dictionary:\n\n${scrapedDataText}\n\nConvert this to the required JSON format.`
 

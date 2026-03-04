@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
 import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
-import { scrapeGoogleTranslate, formatGoogleTranslateData } from '@/lib/google-translate-scraper'
-import { scrapeUrbanDictionary, formatUrbanDictionaryData } from '@/lib/urban-dictionary-scraper'
+import { scrapeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
-import { mergeDefinitionSources, type DefinitionSource } from '@/lib/definition-ranker'
 
 // Helper function to truncate definition to max 20 words
 function truncateDefinition(text: string, maxWords: number = 20): string {
@@ -46,90 +44,67 @@ export async function POST(request: NextRequest) {
     console.log(`🚀 Starting batch dictionary fetch for ${words.length} words`)
     console.log('='.repeat(70))
 
-    // Step 1: Scrape all four dictionary sources for all words
+    // Step 1: Scrape dictionaries in priority order for all words
     const scrapedResults = []
     for (const word of words) {
       console.log(`\n📖 [${scrapedResults.length + 1}/${words.length}] Searching: ${word}`)
       
       try {
-        // Try all four dictionaries in parallel
-        const [cambridgeData, oxfordData, googleData, urbanData] = await Promise.all([
-          scrapeCambridgeDictionary(word),
-          scrapeOxfordDictionary(word),
-          scrapeGoogleTranslate(word),
-          scrapeUrbanDictionary(word)
-        ])
+        let dictionaryData: any = null
+        let source = ''
         
-        // Prepare sources for ranking
-        const sources: DefinitionSource[] = []
-        
+        // 1. Try Cambridge first (highest priority)
+        console.log(`   Trying Cambridge Dictionary...`)
+        const cambridgeData = await scrapeCambridgeDictionary(word)
         if (cambridgeData.found && cambridgeData.definition) {
-          sources.push({
-            source: 'Cambridge Dictionary',
-            definition: cambridgeData.definition,
-            partOfSpeech: cambridgeData.partOfSpeech,
-            examples: cambridgeData.examples,
-            cefrLevel: cambridgeData.cefrLevel,
-            pronunciation: cambridgeData.pronunciation,
-          })
+          console.log(`   ✅ Found in Cambridge Dictionary`)
+          dictionaryData = cambridgeData
+          source = 'Cambridge Dictionary'
         }
         
-        if (oxfordData.found && oxfordData.definition) {
-          sources.push({
-            source: 'Oxford Dictionary',
-            definition: oxfordData.definition,
-            partOfSpeech: oxfordData.partOfSpeech,
-            examples: oxfordData.examples,
-            cefrLevel: oxfordData.cefrLevel,
-            pronunciation: oxfordData.pronunciation,
-          })
+        // 2. If Cambridge fails, try Oxford
+        if (!dictionaryData) {
+          console.log(`   Trying Oxford Dictionary...`)
+          const oxfordData = await scrapeOxfordDictionary(word)
+          if (oxfordData.found && oxfordData.definition) {
+            console.log(`   ✅ Found in Oxford Dictionary`)
+            dictionaryData = oxfordData
+            source = 'Oxford Dictionary'
+          }
         }
         
-        if (googleData.found && googleData.definition) {
-          sources.push({
-            source: 'Google Translate/Dictionary API',
-            definition: googleData.definition,
-            partOfSpeech: googleData.partOfSpeech,
-            examples: googleData.examples,
-          })
+        // 3. If both fail, try Urban Dictionary as last resort
+        if (!dictionaryData) {
+          console.log(`   Trying Urban Dictionary...`)
+          const urbanData = await scrapeUrbanDictionary(word)
+          if (urbanData.found && urbanData.definition) {
+            console.log(`   ✅ Found in Urban Dictionary`)
+            dictionaryData = urbanData
+            source = 'Urban Dictionary'
+          }
         }
         
-        if (urbanData.found && urbanData.definition) {
-          sources.push({
-            source: 'Urban Dictionary',
-            definition: urbanData.definition,
-            partOfSpeech: 'informal',
-            examples: urbanData.examples,
-          })
-        }
-        
-        // Check if we found the word in at least one source
-        if (sources.length === 0) {
+        // Check if we found the word in any dictionary
+        if (!dictionaryData) {
           console.log(`  ❌ Not found in any dictionary`)
           scrapedResults.push({ word, found: false, error: 'Not found' })
           continue
         }
         
-        // Use the definition ranker to select the best definition
-        console.log(`  ✅ Found in ${sources.length} source(s)`)
-        const mergedData = mergeDefinitionSources(sources)
-        
+        // Add the source to the data
         const finalData = {
           word,
-          partOfSpeech: mergedData.partOfSpeech,
-          cefrLevel: mergedData.cefrLevel,
-          definition: mergedData.definition,
-          examples: mergedData.examples,
-          pronunciation: mergedData.pronunciation,
+          partOfSpeech: (dictionaryData as any).partOfSpeech || (source === 'Urban Dictionary' ? 'informal' : ''),
+          cefrLevel: (dictionaryData as any).cefrLevel,
+          definition: dictionaryData.definition,
+          examples: dictionaryData.examples,
+          pronunciation: (dictionaryData as any).pronunciation,
           found: true,
-          needsAIEnhancement: mergedData.needsAIEnhancement, // Track if AI enhancement is needed
+          source,
         }
         
         console.log(`     ${finalData.partOfSpeech || 'unknown'} - ${finalData.definition?.substring(0, 50)}...`)
-        if (finalData.needsAIEnhancement) {
-          console.log(`     ⚡ AI enhancement recommended`)
-        }
-        scrapedResults.push({ ...finalData, source: mergedData.source })
+        scrapedResults.push(finalData)
         
       } catch (error) {
         console.log(`  ❌ Error scraping: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -144,9 +119,9 @@ export async function POST(request: NextRequest) {
     console.log(`\n📊 Scraped ${successfulScrapes.length}/${words.length} words successfully`)
 
     if (successfulScrapes.length === 0) {
-      return NextResponse.json({ 
-        error: 'No words found in any dictionary sources (Cambridge, Oxford, Google Translate)',
-        results: scrapedResults.map(r => ({ word: r.word, error: r.error || 'Not found' }))
+      return NextResponse.json({
+        error: 'No words found in any dictionary sources (Cambridge, Oxford, Urban Dictionary)',
+        results: scrapedResults.map((r: any) => ({ word: r.word, error: r.error || 'Not found' }))
       }, { status: 404 })
     }
 
