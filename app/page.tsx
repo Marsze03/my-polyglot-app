@@ -912,8 +912,8 @@ export default function Home() {
                   </>
                 )}
               </button>
-              </>
-            )
+            </>
+          )}
           </div>
 
           <div className="flex items-center gap-2">
