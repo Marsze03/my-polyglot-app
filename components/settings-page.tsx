@@ -14,16 +14,50 @@ export default function SettingsPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [showClearDataConfirm, setShowClearDataConfirm] = useState(false)
   const [importSuccess, setImportSuccess] = useState<boolean | null>(null)
+  const [refetching, setRefetching] = useState(false)
+  const [refetchSuccess, setRefetchSuccess] = useState<string | null>(null)
 
   const sections = [
-    { id: 'appearance', name: 'Appearance', icon: '🎨' },
-    { id: 'dictionary', name: 'Dictionary', icon: '📚' },
-    { id: 'quiz', name: 'Quiz & Learning', icon: '🎯' },
-    { id: 'offline', name: 'Offline & Storage', icon: '💾' },
-    { id: 'notifications', name: 'Notifications', icon: '🔔' },
-    { id: 'accessibility', name: 'Accessibility', icon: '♿' },
-    { id: 'account', name: 'Account', icon: '👤' },
-    { id: 'about', name: 'About', icon: 'ℹ️' },
+    { 
+      id: 'appearance', 
+      name: 'Appearance', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    },
+    { 
+      id: 'dictionary', 
+      name: 'Dictionary', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    },
+    { 
+      id: 'quiz', 
+      name: 'Quiz & Learning', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    },
+    { 
+      id: 'offline', 
+      name: 'Offline & Storage', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    },
+    { 
+      id: 'notifications', 
+      name: 'Notifications', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    },
+    { 
+      id: 'accessibility', 
+      name: 'Accessibility', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    },
+    { 
+      id: 'account', 
+      name: 'Account', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    },
+    { 
+      id: 'about', 
+      name: 'About', 
+      icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    },
   ]
 
   const handleExportSettings = () => {
@@ -71,6 +105,41 @@ export default function SettingsPage() {
     return `${sizeKB} KB`
   }
 
+  const handleRefetchAll = async () => {
+    const confirmed = confirm(
+      '🔄 This will refetch all words from the dictionary to update their definitions.\n\n' +
+      'This might take a few minutes. Continue?'
+    )
+
+    if (!confirmed) return
+
+    try {
+      setRefetching(true)
+      setRefetchSuccess(null)
+
+      const response = await fetch('/api/refetch-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to refetch all words')
+      }
+
+      setRefetchSuccess(`✅ Successfully refetched and updated ${result.updated} words!`)
+      setTimeout(() => setRefetchSuccess(null), 5000)
+    } catch (err) {
+      setRefetchSuccess(`❌ ${err instanceof Error ? err.message : 'Failed to refetch all words'}`)
+      setTimeout(() => setRefetchSuccess(null), 5000)
+    } finally {
+      setRefetching(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
       <div className="max-w-7xl mx-auto px-6 py-8">
@@ -101,13 +170,13 @@ export default function SettingsPage() {
                 <button
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
-                  className={`w-full text-left px-4 py-3 rounded-xl mb-1 transition-all ${
+                  className={`w-full text-left px-4 py-3 rounded-xl mb-1 transition-all flex items-center gap-2 ${
                     activeSection === section.id
                       ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <span className="mr-2">{section.icon}</span>
+                  {section.icon}
                   {section.name}
                 </button>
               ))}
@@ -523,6 +592,40 @@ export default function SettingsPage() {
                         : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
                     }`}>
                       {importSuccess ? '✅ Settings imported successfully!' : '❌ Failed to import settings'}
+                    </div>
+                  )}
+
+                  {/* Refetch All Data */}
+                  <button
+                    onClick={handleRefetchAll}
+                    disabled={refetching}
+                    className="w-full px-4 py-3 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-xl font-medium hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-4"
+                  >
+                    {refetching ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Refetching All Words...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                        </svg>
+                        🔄 Refetch All Words
+                      </>
+                    )}
+                  </button>
+
+                  {refetchSuccess && (
+                    <div className={`p-3 rounded-xl mb-4 ${
+                      refetchSuccess.startsWith('✅')
+                        ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                        : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                    }`}>
+                      {refetchSuccess}
                     </div>
                   )}
 
