@@ -172,7 +172,7 @@ export default function SettingsPage() {
                   onClick={() => setActiveSection(section.id)}
                   className={`w-full text-left px-4 py-3 rounded-xl mb-1 transition-all flex items-center gap-2 ${
                     activeSection === section.id
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                      ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-medium'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -205,7 +205,7 @@ export default function SettingsPage() {
                           onClick={() => setTheme(t)}
                           className={`px-4 py-3 rounded-xl border-2 transition-all ${
                             theme === t
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                              ? 'border-slate-900 dark:border-white bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
                               : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                           }`}
                         >
@@ -227,7 +227,7 @@ export default function SettingsPage() {
                           onClick={() => updateSettings({ fontSize: size })}
                           className={`px-4 py-3 rounded-xl border-2 transition-all ${
                             settings.fontSize === size
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                              ? 'border-slate-900 dark:border-white bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
                               : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                           }`}
                         >
@@ -246,7 +246,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ compactView: !settings.compactView })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.compactView ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.compactView ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -266,7 +266,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ showWordCount: !settings.showWordCount })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.showWordCount ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.showWordCount ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -317,7 +317,7 @@ export default function SettingsPage() {
                       onChange={(e) => updateSettings({ maxDefinitions: parseInt(e.target.value) })}
                       className="w-full"
                     />
-                    <div className="text-center text-lg font-semibold text-blue-600 dark:text-blue-400 mt-2">
+                    <div className="text-center text-lg font-semibold text-slate-900 dark:text-white mt-2">
                       {settings.maxDefinitions}
                     </div>
                   </div>
@@ -331,7 +331,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ showExamples: !settings.showExamples })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.showExamples ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.showExamples ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -351,7 +351,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ autoPlayPronunciation: !settings.autoPlayPronunciation })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.autoPlayPronunciation ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.autoPlayPronunciation ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -402,7 +402,7 @@ export default function SettingsPage() {
                       onChange={(e) => updateSettings({ questionsPerSession: parseInt(e.target.value) })}
                       className="w-full"
                     />
-                    <div className="text-center text-lg font-semibold text-blue-600 dark:text-blue-400 mt-2">
+                    <div className="text-center text-lg font-semibold text-slate-900 dark:text-white mt-2">
                       {settings.questionsPerSession}
                     </div>
                   </div>
@@ -419,7 +419,7 @@ export default function SettingsPage() {
                           onClick={() => updateSettings({ difficultyLevel: level })}
                           className={`px-4 py-3 rounded-xl border-2 transition-all ${
                             settings.difficultyLevel === level
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                              ? 'border-slate-900 dark:border-white bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
                               : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                           }`}
                         >
@@ -438,7 +438,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ showAnswersImmediately: !settings.showAnswersImmediately })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.showAnswersImmediately ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.showAnswersImmediately ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -458,7 +458,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ enableTimedQuiz: !settings.enableTimedQuiz })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.enableTimedQuiz ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.enableTimedQuiz ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -483,7 +483,7 @@ export default function SettingsPage() {
                         onChange={(e) => updateSettings({ quizTimeLimitMinutes: parseInt(e.target.value) })}
                         className="w-full"
                       />
-                      <div className="text-center text-lg font-semibold text-blue-600 dark:text-blue-400 mt-2">
+                      <div className="text-center text-lg font-semibold text-slate-900 dark:text-white mt-2">
                         {settings.quizTimeLimitMinutes} minutes
                       </div>
                     </div>
@@ -502,7 +502,7 @@ export default function SettingsPage() {
                       onChange={(e) => updateSettings({ reviewIntervalDays: parseInt(e.target.value) })}
                       className="w-full"
                     />
-                    <div className="text-center text-lg font-semibold text-blue-600 dark:text-blue-400 mt-2">
+                    <div className="text-center text-lg font-semibold text-slate-900 dark:text-white mt-2">
                       {settings.reviewIntervalDays} days
                     </div>
                   </div>
@@ -525,7 +525,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ offlineMode: !settings.offlineMode })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.offlineMode ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.offlineMode ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -545,7 +545,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ autoDownload: !settings.autoDownload })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.autoDownload ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.autoDownload ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -557,13 +557,13 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Storage Usage */}
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl mb-4">
+                  <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-xl mb-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="font-medium text-slate-900 dark:text-white">Storage Used</div>
                         <div className="text-sm text-slate-500 dark:text-slate-400">Offline vocabulary data</div>
                       </div>
-                      <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                      <div className="text-xl font-bold text-slate-900 dark:text-white">
                         {getStorageSize()}
                       </div>
                     </div>
@@ -573,7 +573,7 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <button
                       onClick={handleExportSettings}
-                      className="px-4 py-3 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-xl font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                      className="px-4 py-3 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white rounded-xl font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
                     >
                       📤 Export Settings
                     </button>
@@ -677,7 +677,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ dailyReminders: !settings.dailyReminders })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.dailyReminders ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.dailyReminders ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -712,7 +712,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ achievementNotifications: !settings.achievementNotifications })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.achievementNotifications ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.achievementNotifications ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -741,7 +741,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ highContrast: !settings.highContrast })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.highContrast ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.highContrast ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
@@ -761,7 +761,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateSettings({ reduceAnimations: !settings.reduceAnimations })}
                       className={`relative w-12 h-6 rounded-full transition-colors ${
-                        settings.reduceAnimations ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                        settings.reduceAnimations ? 'bg-slate-900 dark:bg-white' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                     >
                       <div
