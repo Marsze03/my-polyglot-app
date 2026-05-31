@@ -76,17 +76,8 @@ async function callGemini(prompt: string, retries = 0): Promise<string> {
 }
 
 function buildPrompt(word: string): string {
-  return `Search Cambridge Dictionary or Oxford Dictionary and look up the English word "${word}".
-
-Return ONLY a valid JSON object — no markdown, no explanation:
-{
-  "part_of_speech": "noun" | "verb" | "adjective" | "adverb" | "preposition" | "conjunction" | "pronoun" | "interjection",
-  "cefr_level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2",
-  "meaning_primary": "the primary definition (max 20 words)",
-  "usage_tips": "one example sentence using the word"
-}
-
-Use the CEFR level from Cambridge if available. Return ONLY the JSON object.`
+  return `Look up "${word}" in Cambridge Dictionary. Return ONLY this JSON, no markdown:
+{"part_of_speech":"noun/verb/adjective/adverb/etc","cefr_level":"A1-C2","meaning_primary":"definition max 20 words","usage_tips":"one example sentence"}`
 }
 
 export async function geminiLookup(word: string): Promise<GeminiWordResult> {
