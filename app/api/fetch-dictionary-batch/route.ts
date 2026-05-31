@@ -41,9 +41,12 @@ export async function POST(request: NextRequest) {
     console.log(`🚀 Starting batch dictionary fetch for ${words.length} words`)
     console.log('='.repeat(70))
 
-    // --- PATH 1: Gemini with Google Search grounding ---
-    // Each word gets its own search — Gemini fetches from Cambridge/Oxford directly.
-    // Note: free tier is 15 req/min, so batch adds ~4s delay between words.
+    // --- PATH 1: Gemini (primary) → Free Dictionary + AI (fallback for misses) ---
+    // Gemini searches Cambridge/Oxford/Google Translate for each word.
+    // Words Gemini can't find are retried via Free Dictionary + HuggingFace/LM Studio/OpenAI.
+    let geminiFoundData: any[] = []
+    let wordsForFallback: string[] = words
+
     if (process.env.USE_GEMINI === 'true') {
       if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json(
@@ -52,35 +55,45 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      console.log(`🤖 Using Gemini Search for ${words.length} words (4s delay between each for rate limit)`)
-      const results = await geminiLookupBatch(words)
+      console.log(`🤖 [Gemini] Looking up ${words.length} words via Cambridge/Oxford/Google Translate...`)
+      const geminiResults = await geminiLookupBatch(words)
 
-      const found = results.filter((r) => r.found)
-      const failed = results.filter((r) => !r.found).map((r) => r.word)
-
-      console.log(`✅ Gemini found ${found.length}/${words.length} words`)
-
-      return NextResponse.json({
-        success: true,
-        data: found.map((r) => ({
+      geminiFoundData = geminiResults
+        .filter((r) => r.found)
+        .map((r) => ({
           word: r.word,
           part_of_speech: r.part_of_speech,
           cefr_level: r.cefr_level,
           meaning_primary: r.meaning_primary,
           usage_tips: r.usage_tips,
-        })),
-        source: 'Cambridge/Oxford via Gemini Search',
-        processed: found.length,
-        total: words.length,
-        failed,
-      })
+        }))
+
+      const geminiMissed = geminiResults.filter((r) => !r.found).map((r) => r.word)
+      wordsForFallback = geminiMissed
+
+      console.log(`✅ [Gemini] Found ${geminiFoundData.length}/${words.length} words`)
+      if (geminiMissed.length > 0) {
+        console.log(`⚠️ [Gemini] ${geminiMissed.length} words missed — falling back to Free Dictionary + AI: ${geminiMissed.join(', ')}`)
+      }
+
+      // If Gemini found everything, return immediately
+      if (wordsForFallback.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: geminiFoundData,
+          source: 'Cambridge/Oxford via Gemini Search',
+          processed: geminiFoundData.length,
+          total: words.length,
+          failed: [],
+        })
+      }
     }
 
-    // --- PATH 2: Free Dictionary API + AI processing ---
+    // --- PATH 2: Free Dictionary API + AI processing (fallback or standalone) ---
     const scrapedResults: any[] = []
 
-    for (const word of words) {
-      console.log(`\n📖 [${scrapedResults.length + 1}/${words.length}] Searching: ${word}`)
+    for (const word of wordsForFallback) {
+      console.log(`\n📖 [${scrapedResults.length + 1}/${wordsForFallback.length}] Fallback lookup: ${word}`)
 
       try {
         let dictionaryData: any = null
@@ -299,15 +312,23 @@ If a definition says "past tense/participle of X", provide the actual meaning in
       }
     })
 
-    console.log(`✅ Processed ${finalResults.length} words\n${'='.repeat(70)}`)
+    // Merge Gemini results (Cambridge/Oxford) + fallback results (Free Dictionary + AI)
+    const allResults = [...geminiFoundData, ...finalResults]
+    const stillFailed = scrapedResults.filter((r: any) => !r.found).map((r: any) => r.word)
+
+    console.log(`✅ Total: ${allResults.length} words (${geminiFoundData.length} via Gemini, ${finalResults.length} via fallback)\n${'='.repeat(70)}`)
+
+    const sourceLabel = geminiFoundData.length > 0
+      ? `Cambridge/Oxford via Gemini + Free Dictionary + ${serviceName}`
+      : `Free Dictionary + ${serviceName}`
 
     return NextResponse.json({
       success: true,
-      data: finalResults,
-      source: `Free Dictionary + ${serviceName}`,
-      processed: finalResults.length,
+      data: allResults,
+      source: sourceLabel,
+      processed: allResults.length,
       total: words.length,
-      failed: scrapedResults.filter((r: any) => !r.found).map((r: any) => r.word),
+      failed: stillFailed,
     })
   } catch (error) {
     console.error('❌ Batch dictionary fetch error:', error)

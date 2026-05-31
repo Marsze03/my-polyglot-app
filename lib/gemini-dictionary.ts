@@ -117,8 +117,13 @@ export async function geminiLookupBatch(words: string[]): Promise<GeminiWordResu
 
   for (let i = 0; i < words.length; i++) {
     console.log(`   Gemini [${i + 1}/${words.length}] looking up: ${words[i]}`)
-    const result = await geminiLookup(words[i])
-    results.push(result)
+    try {
+      const result = await geminiLookup(words[i])
+      results.push(result)
+    } catch (error) {
+      console.error(`Gemini batch failed for "${words[i]}":`, error)
+      results.push({ word: words[i], part_of_speech: '', cefr_level: 'n.a.', meaning_primary: '', usage_tips: '', found: false })
+    }
 
     if (i < words.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS))

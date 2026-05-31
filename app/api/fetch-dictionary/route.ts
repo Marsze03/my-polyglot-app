@@ -37,12 +37,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Word is required' }, { status: 400 })
     }
 
-    // --- PATH 1: Gemini with Google Search grounding ---
-    // Gemini searches Cambridge/Oxford directly and returns structured data in one call.
-    // Enable with USE_GEMINI=true + GEMINI_API_KEY in environment variables.
+    // --- PATH 1: Gemini (primary) → Free Dictionary + AI (fallback) ---
+    // Gemini searches Cambridge/Oxford/Google Translate via Google Search grounding.
+    // If Gemini fails or is rate-limited, falls back to Free Dictionary + HuggingFace/LM Studio/OpenAI.
     if (process.env.USE_GEMINI === 'true') {
-      console.log(`📖 [Gemini] Looking up: ${word}`)
-
       if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json(
           { error: 'GEMINI_API_KEY is not configured in environment variables.' },
@@ -50,29 +48,29 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const result = await geminiLookup(word)
-
-      if (!result.found) {
-        return NextResponse.json(
-          { error: `Word "${word}" not found via Gemini search.` },
-          { status: 404 }
-        )
+      console.log(`📖 [Gemini] Looking up: ${word}`)
+      try {
+        const result = await geminiLookup(word)
+        if (result.found) {
+          console.log(`✅ [Gemini] Found: ${word}`)
+          return NextResponse.json({
+            success: true,
+            data: {
+              part_of_speech: result.part_of_speech,
+              cefr_level: result.cefr_level,
+              meaning_primary: result.meaning_primary,
+              usage_tips: result.usage_tips,
+            },
+            source: 'Cambridge/Oxford via Gemini Search',
+          })
+        }
+        console.log(`⚠️ [Gemini] "${word}" not found — falling back to secondary sources`)
+      } catch (err) {
+        console.log(`⚠️ [Gemini] Failed (${err instanceof Error ? err.message : err}) — falling back to secondary sources`)
       }
-
-      console.log(`✅ [Gemini] Found: ${word}`)
-      return NextResponse.json({
-        success: true,
-        data: {
-          part_of_speech: result.part_of_speech,
-          cefr_level: result.cefr_level,
-          meaning_primary: result.meaning_primary,
-          usage_tips: result.usage_tips,
-        },
-        source: 'Cambridge/Oxford via Gemini Search',
-      })
     }
 
-    // --- PATH 2: Free Dictionary API + AI processing ---
+    // --- PATH 2: Free Dictionary API + AI processing (standalone or fallback) ---
     console.log(`📖 Searching dictionaries for: ${word}`)
 
     let dictionaryData: any = null
