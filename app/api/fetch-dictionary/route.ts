@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { geminiLookup } from '@/lib/gemini-dictionary'
 import { scrapeFreeDictionary } from '@/lib/free-dictionary-scraper'
 import { scrapeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
@@ -32,17 +33,51 @@ export async function POST(request: NextRequest) {
     }
 
     const { word } = await request.json()
-
     if (!word) {
       return NextResponse.json({ error: 'Word is required' }, { status: 400 })
     }
 
+    // --- PATH 1: Gemini with Google Search grounding ---
+    // Gemini searches Cambridge/Oxford directly and returns structured data in one call.
+    // Enable with USE_GEMINI=true + GEMINI_API_KEY in environment variables.
+    if (process.env.USE_GEMINI === 'true') {
+      console.log(`📖 [Gemini] Looking up: ${word}`)
+
+      if (!process.env.GEMINI_API_KEY) {
+        return NextResponse.json(
+          { error: 'GEMINI_API_KEY is not configured in environment variables.' },
+          { status: 500 }
+        )
+      }
+
+      const result = await geminiLookup(word)
+
+      if (!result.found) {
+        return NextResponse.json(
+          { error: `Word "${word}" not found via Gemini search.` },
+          { status: 404 }
+        )
+      }
+
+      console.log(`✅ [Gemini] Found: ${word}`)
+      return NextResponse.json({
+        success: true,
+        data: {
+          part_of_speech: result.part_of_speech,
+          cefr_level: result.cefr_level,
+          meaning_primary: result.meaning_primary,
+          usage_tips: result.usage_tips,
+        },
+        source: 'Cambridge/Oxford via Gemini Search',
+      })
+    }
+
+    // --- PATH 2: Free Dictionary API + AI processing ---
     console.log(`📖 Searching dictionaries for: ${word}`)
 
     let dictionaryData: any = null
     let source = ''
 
-    // 1. Try Free Dictionary API (replaces blocked Cambridge/Oxford scrapers)
     console.log(`   Trying Free Dictionary API...`)
     const freeData = await scrapeFreeDictionary(word)
     if (freeData.found && freeData.definition) {
@@ -51,7 +86,6 @@ export async function POST(request: NextRequest) {
       source = 'Free Dictionary'
     }
 
-    // 2. Fallback to Urban Dictionary for slang/informal words
     if (!dictionaryData) {
       console.log(`   Trying Urban Dictionary...`)
       const urbanData = await scrapeUrbanDictionary(word)
@@ -63,23 +97,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (!dictionaryData) {
-      console.log(`❌ Word "${word}" not found in any dictionary`)
       return NextResponse.json(
         { error: `Word "${word}" not found in any dictionary` },
         { status: 404 }
       )
     }
 
-    // Prepare data for AI processing
     let scrapedDataText = `Word: ${word}\nSource: ${source}\n`
-    if (dictionaryData.pronunciation) {
-      scrapedDataText += `Pronunciation: ${dictionaryData.pronunciation}\n`
-    }
-    if (dictionaryData.partOfSpeech) {
-      scrapedDataText += `Part of Speech: ${dictionaryData.partOfSpeech}\n`
-    }
+    if (dictionaryData.pronunciation) scrapedDataText += `Pronunciation: ${dictionaryData.pronunciation}\n`
+    if (dictionaryData.partOfSpeech) scrapedDataText += `Part of Speech: ${dictionaryData.partOfSpeech}\n`
     scrapedDataText += `Definition: ${dictionaryData.definition}\n`
-    if (dictionaryData.examples && dictionaryData.examples.length > 0) {
+    if (dictionaryData.examples?.length) {
       scrapedDataText += `Examples:\n`
       dictionaryData.examples.forEach((ex: string, i: number) => {
         scrapedDataText += `  ${i + 1}. ${ex}\n`
@@ -101,7 +129,7 @@ export async function POST(request: NextRequest) {
       apiKey = process.env.HUGGINGFACE_API_KEY || ''
       if (!apiKey) {
         return NextResponse.json(
-          { error: 'Hugging Face API key not configured. Add HUGGINGFACE_API_KEY to your environment.' },
+          { error: 'HUGGINGFACE_API_KEY is not configured.' },
           { status: 500 }
         )
       }
@@ -115,7 +143,7 @@ export async function POST(request: NextRequest) {
       model = 'gpt-4o-mini'
       if (!apiKey) {
         return NextResponse.json(
-          { error: 'OpenAI API key not configured. Add OPENAI_API_KEY to your environment, or set USE_LM_STUDIO=true or USE_HUGGINGFACE=true.' },
+          { error: 'No AI backend configured. Set USE_GEMINI=true, USE_LM_STUDIO=true, USE_HUGGINGFACE=true, or OPENAI_API_KEY.' },
           { status: 500 }
         )
       }
@@ -129,24 +157,16 @@ export async function POST(request: NextRequest) {
     const serviceName = useHuggingFace ? 'Hugging Face' : useLMStudio ? 'LM Studio' : 'OpenAI'
     console.log(`🤖 Sending to ${serviceName} for processing...`)
 
-    const systemPrompt = `You are an intelligent dictionary assistant processing dictionary data.
-
-Return ONLY a valid JSON object with this exact structure:
+    const systemPrompt = `You are a dictionary assistant. Return ONLY a valid JSON object:
 {
   "part_of_speech": "noun" | "verb" | "adjective" | "adverb" | "preposition" | "conjunction" | "pronoun" | "interjection",
   "cefr_level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2",
   "meaning_primary": "the primary definition",
-  "usage_tips": "example sentence in quotes"
+  "usage_tips": "one example sentence"
 }
+Estimate cefr_level if not provided. Return ONLY the JSON, no markdown.`
 
-Rules:
-- For part_of_speech: convert to lowercase full word (e.g., "noun" not "n.")
-- For cefr_level: estimate based on word complexity if not provided
-- For meaning_primary: use the definition exactly as provided
-- For usage_tips: use the first example sentence, or create a brief usage note if none
-- Return ONLY the JSON object, no markdown code blocks or additional text`
-
-    const userPrompt = `Here is the data from a dictionary:\n\n${scrapedDataText}\n\nConvert this to the required JSON format.`
+    const userPrompt = `Dictionary data:\n\n${scrapedDataText}\n\nConvert to the required JSON format.`
 
     let requestBody: any
     if (useHuggingFace) {
@@ -176,32 +196,25 @@ Rules:
       const errorData = await response.json().catch(() => ({}))
       console.error(`❌ ${serviceName} Error:`, errorData)
       return NextResponse.json(
-        { error: `Failed to process dictionary data with ${serviceName}.` },
+        { error: `Failed to process with ${serviceName}.` },
         { status: response.status }
       )
     }
 
     const data = await response.json()
-
-    let content: string
-    if (useHuggingFace) {
-      content = Array.isArray(data) ? data[0]?.generated_text : data.generated_text
-    } else {
-      content = data.choices[0]?.message?.content
-    }
+    const content: string = useHuggingFace
+      ? (Array.isArray(data) ? data[0]?.generated_text : data.generated_text)
+      : data.choices[0]?.message?.content
 
     if (!content) {
       return NextResponse.json({ error: 'No response from AI' }, { status: 500 })
     }
-
-    console.log('🤖 AI processed response:', content)
 
     let processedData
     try {
       const cleanContent = content.replace(/```json\n?|\n?```/g, '').trim()
       processedData = JSON.parse(cleanContent)
     } catch {
-      console.error('Failed to parse AI response, using scraped data as fallback')
       processedData = {
         part_of_speech: dictionaryData.partOfSpeech || '',
         cefr_level: 'n.a.',
@@ -219,8 +232,6 @@ Rules:
       }
     }
 
-    console.log('✅ Final structured data:', processedData)
-
     return NextResponse.json({
       success: true,
       data: {
@@ -229,7 +240,7 @@ Rules:
         meaning_primary: truncateDefinition(processedData.meaning_primary || ''),
         usage_tips: processedData.usage_tips || '',
       },
-      source: source + ' + AI Processing',
+      source: source + ` + ${serviceName}`,
     })
   } catch (error) {
     console.error('❌ Dictionary fetch error:', error)
