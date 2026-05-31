@@ -25,36 +25,53 @@ function extractJSON(text: string): any {
   }
 }
 
-async function callGemini(prompt: string): Promise<string> {
+async function callGemini(prompt: string, retries = 3): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set')
 
   const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: { temperature: 0.1 },
-    }),
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.1 },
   })
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(`Gemini API ${response.status}: ${JSON.stringify(err)}`)
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    })
+
+    if (response.status === 429) {
+      // Rate limited — wait and retry with exponential backoff
+      const waitMs = attempt * 10000 // 10s, 20s, 30s
+      console.log(`Gemini rate limited (429), retrying in ${waitMs / 1000}s... (attempt ${attempt}/${retries})`)
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs))
+        continue
+      }
+      throw new Error('Gemini rate limit exceeded after retries. Please wait a moment and try again.')
+    }
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(`Gemini API ${response.status}: ${JSON.stringify(err)}`)
+    }
+
+    const data = await response.json()
+    const text: string = data.candidates?.[0]?.content?.parts
+      ?.filter((p: any) => p.text)
+      ?.map((p: any) => p.text)
+      ?.join('') || ''
+
+    if (!text) throw new Error('Empty response from Gemini')
+    return text
   }
 
-  const data = await response.json()
-  const text: string = data.candidates?.[0]?.content?.parts
-    ?.filter((p: any) => p.text)
-    ?.map((p: any) => p.text)
-    ?.join('') || ''
-
-  if (!text) throw new Error('Empty response from Gemini')
-  return text
+  throw new Error('Gemini failed after all retries')
 }
 
 export async function geminiLookup(word: string): Promise<GeminiWordResult> {
@@ -82,7 +99,12 @@ Use the CEFR level from Cambridge if available. Return ONLY the JSON object.`
       found: !!(parsed.meaning_primary),
     }
   } catch (error) {
-    console.error(`Gemini lookup failed for "${word}":`, error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`Gemini lookup failed for "${word}": ${message}`)
+    // Re-throw rate limit errors so the API route can return a proper error to the UI
+    if (message.includes('rate limit') || message.includes('429')) {
+      throw error
+    }
     return { word, part_of_speech: '', cefr_level: 'n.a.', meaning_primary: '', usage_tips: '', found: false }
   }
 }
