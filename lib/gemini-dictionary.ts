@@ -27,11 +27,16 @@ function extractJSON(text: string): any {
 
 // retries=0 for single-word lookups (fail fast, fall back immediately)
 // retries=2 for batch lookups (waiting a bit between words is acceptable)
+function cleanEnvVar(value: string | undefined): string {
+  // Strip BOM (U+FEFF), carriage returns, newlines, and surrounding whitespace
+  return (value || '').replace(/^﻿/, '').replace(/\r?\n/g, '').trim()
+}
+
 async function callGemini(prompt: string, retries = 0): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = cleanEnvVar(process.env.GEMINI_API_KEY)
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set')
 
-  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+  const model = cleanEnvVar(process.env.GEMINI_MODEL) || 'gemini-2.0-flash'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
   const body = JSON.stringify({

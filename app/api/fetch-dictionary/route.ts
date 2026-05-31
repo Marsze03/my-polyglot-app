@@ -114,8 +114,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Dictionary data from ${source}:`, dictionaryData)
 
-    const useHuggingFace = process.env.USE_HUGGINGFACE?.trim() === 'true'
-    const useLMStudio = process.env.USE_LM_STUDIO?.trim() === 'true'
+    const cleanEnv = (v?: string) => (v || '').replace(/^﻿/, '').replace(/\r?\n/g, '').trim()
+    const useHuggingFace = cleanEnv(process.env.USE_HUGGINGFACE) === 'true'
+    const useLMStudio = cleanEnv(process.env.USE_LM_STUDIO) === 'true'
 
     let apiUrl: string
     let apiKey: string
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
     if (useHuggingFace) {
       model = process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct'
       apiUrl = `https://api-inference.huggingface.co/models/${model}`
-      apiKey = process.env.HUGGINGFACE_API_KEY || ''
+      apiKey = cleanEnv(process.env.HUGGINGFACE_API_KEY)
       if (!apiKey) {
         return NextResponse.json(
           { error: 'HUGGINGFACE_API_KEY is not configured.' },
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
       model = process.env.LM_STUDIO_MODEL || 'local-model'
     } else {
       apiUrl = 'https://api.openai.com/v1/chat/completions'
-      apiKey = process.env.OPENAI_API_KEY || ''
+      apiKey = cleanEnv(process.env.OPENAI_API_KEY)
       model = 'gpt-4o-mini'
       if (!apiKey) {
         return NextResponse.json(
