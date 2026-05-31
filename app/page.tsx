@@ -360,33 +360,15 @@ export default function Home() {
         if (result.success && result.data) {
           console.log(`✅ Received data for ${result.data.length} words in chunk ${chunkNum}...`)
           
-          // Get list of words that failed (not found in Cambridge Dictionary)
+          // Track words that failed lookup (but do NOT delete them — a lookup
+          // failure does not mean the word is invalid)
           const failedWords = result.failed || []
           allFailedWords.push(...failedWords)
-          const wordsToDelete = chunk.filter(w => 
-            failedWords.includes(w.word) || 
-            !result.data.find((d: any) => d.word.toLowerCase() === w.word.toLowerCase())
-          )
-          
-          // Delete invalid words using batch delete
-          if (wordsToDelete.length > 0) {
-            console.log(`🗑️  Deleting ${wordsToDelete.length} invalid words from chunk ${chunkNum}...`)
-            const idsToDelete = wordsToDelete.map(w => w.id)
-            
-            const { error: deleteError } = await supabase
-              .from('vocab_library')
-              .delete()
-              .in('id', idsToDelete)
-
-            if (!deleteError) {
-              totalDeleted += wordsToDelete.length
-              console.log(`  ✅ Deleted ${wordsToDelete.length} words`)
-            } else {
-              console.error(`  ❌ Failed to delete words:`, deleteError)
-            }
+          if (failedWords.length > 0) {
+            console.log(`  ⚠️ ${failedWords.length} words not found in dictionary (skipped, not deleted): ${failedWords.join(', ')}`)
           }
-          
-          // Batch update words found in Cambridge Dictionary
+
+          // Batch update words that were successfully looked up
           if (result.data.length > 0) {
             for (const wordData of result.data) {
               const wordToUpdate = chunk.find(w => w.word.toLowerCase() === wordData.word.toLowerCase())
@@ -427,14 +409,11 @@ export default function Home() {
       setError(null)
       
       let message = `✅ Successfully processed ${incompleteWords.length} words:\n\n`
-      message += `• ${totalUpdated} words found and updated from Cambridge Dictionary\n`
-      if (totalDeleted > 0) {
-        message += `• ${totalDeleted} invalid words deleted (not found in dictionary)\n`
-      }
+      message += `• ${totalUpdated} words updated\n`
       if (allFailedWords.length > 0 && allFailedWords.length <= 10) {
-        message += `\nDeleted words: ${allFailedWords.join(', ')}`
+        message += `• ${allFailedWords.length} words not found (kept as-is): ${allFailedWords.join(', ')}\n`
       } else if (allFailedWords.length > 10) {
-        message += `\nDeleted ${allFailedWords.length} invalid words`
+        message += `• ${allFailedWords.length} words not found (kept as-is)\n`
       }
       
       alert(message)
