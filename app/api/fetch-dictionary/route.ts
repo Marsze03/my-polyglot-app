@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     // --- PATH 1: Gemini (primary) → Free Dictionary + AI (fallback) ---
     // Gemini searches Cambridge/Oxford/Google Translate via Google Search grounding.
     // If Gemini fails or is rate-limited, falls back to Free Dictionary + HuggingFace/LM Studio/OpenAI.
-    if (process.env.USE_GEMINI === 'true') {
+    if (process.env.USE_GEMINI?.trim() === 'true') {
       if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json(
           { error: 'GEMINI_API_KEY is not configured in environment variables.' },
@@ -114,8 +114,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Dictionary data from ${source}:`, dictionaryData)
 
-    const useHuggingFace = process.env.USE_HUGGINGFACE === 'true'
-    const useLMStudio = process.env.USE_LM_STUDIO === 'true'
+    const useHuggingFace = process.env.USE_HUGGINGFACE?.trim() === 'true'
+    const useLMStudio = process.env.USE_LM_STUDIO?.trim() === 'true'
 
     let apiUrl: string
     let apiKey: string

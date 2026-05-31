@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     let geminiFoundData: any[] = []
     let wordsForFallback: string[] = words
 
-    if (process.env.USE_GEMINI === 'true') {
+    if (process.env.USE_GEMINI?.trim() === 'true') {
       if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json(
           { error: 'GEMINI_API_KEY is not configured in environment variables.' },
@@ -151,8 +151,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const useHuggingFace = process.env.USE_HUGGINGFACE === 'true'
-    const useLMStudio = process.env.USE_LM_STUDIO === 'true'
+    const useHuggingFace = process.env.USE_HUGGINGFACE?.trim() === 'true'
+    const useLMStudio = process.env.USE_LM_STUDIO?.trim() === 'true'
 
     let apiUrl: string
     let apiKey: string
