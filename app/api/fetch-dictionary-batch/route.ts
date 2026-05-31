@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { scrapeCambridgeDictionary, formatCambridgeData } from '@/lib/cambridge-scraper'
-import { scrapeOxfordDictionary, formatOxfordData } from '@/lib/oxford-scraper'
+import { scrapeFreeDictionary } from '@/lib/free-dictionary-scraper'
 import { scrapeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 
-// Helper function to truncate definition to max 20 words
 function truncateDefinition(text: string, maxWords: number = 20): string {
   if (!text) return text
   const words = text.trim().split(/\s+/)
@@ -14,28 +12,27 @@ function truncateDefinition(text: string, maxWords: number = 20): string {
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting: 10 batch requests per minute per IP (stricter for batch)
     const clientId = getClientIdentifier(request)
     const rateLimit = checkRateLimit(clientId + ':batch', { maxRequests: 10, windowMs: 60000 })
-    
+
     if (!rateLimit.allowed) {
       const resetIn = Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
       return NextResponse.json(
         { error: `Rate limit exceeded for batch requests. Try again in ${resetIn} seconds.` },
-        { 
+        {
           status: 429,
           headers: {
             'X-RateLimit-Limit': rateLimit.limit.toString(),
             'X-RateLimit-Remaining': rateLimit.remaining.toString(),
             'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString(),
-            'Retry-After': resetIn.toString()
-          }
+            'Retry-After': resetIn.toString(),
+          },
         }
       )
     }
-    
+
     const { words } = await request.json()
-    
+
     if (!words || !Array.isArray(words) || words.length === 0) {
       return NextResponse.json({ error: 'Words array is required' }, { status: 400 })
     }
@@ -44,36 +41,25 @@ export async function POST(request: NextRequest) {
     console.log(`🚀 Starting batch dictionary fetch for ${words.length} words`)
     console.log('='.repeat(70))
 
-    // Step 1: Scrape dictionaries in priority order for all words
+    // Step 1: Look up all words
     const scrapedResults = []
     for (const word of words) {
       console.log(`\n📖 [${scrapedResults.length + 1}/${words.length}] Searching: ${word}`)
-      
+
       try {
         let dictionaryData: any = null
         let source = ''
-        
-        // 1. Try Cambridge first (highest priority)
-        console.log(`   Trying Cambridge Dictionary...`)
-        const cambridgeData = await scrapeCambridgeDictionary(word)
-        if (cambridgeData.found && cambridgeData.definition) {
-          console.log(`   ✅ Found in Cambridge Dictionary`)
-          dictionaryData = cambridgeData
-          source = 'Cambridge Dictionary'
+
+        // 1. Try Free Dictionary API
+        console.log(`   Trying Free Dictionary API...`)
+        const freeData = await scrapeFreeDictionary(word)
+        if (freeData.found && freeData.definition) {
+          console.log(`   ✅ Found in Free Dictionary API`)
+          dictionaryData = freeData
+          source = 'Free Dictionary'
         }
-        
-        // 2. If Cambridge fails, try Oxford
-        if (!dictionaryData) {
-          console.log(`   Trying Oxford Dictionary...`)
-          const oxfordData = await scrapeOxfordDictionary(word)
-          if (oxfordData.found && oxfordData.definition) {
-            console.log(`   ✅ Found in Oxford Dictionary`)
-            dictionaryData = oxfordData
-            source = 'Oxford Dictionary'
-          }
-        }
-        
-        // 3. If both fail, try Urban Dictionary as last resort
+
+        // 2. Fallback to Urban Dictionary
         if (!dictionaryData) {
           console.log(`   Trying Urban Dictionary...`)
           const urbanData = await scrapeUrbanDictionary(word)
@@ -83,113 +69,108 @@ export async function POST(request: NextRequest) {
             source = 'Urban Dictionary'
           }
         }
-        
-        // Check if we found the word in any dictionary
+
         if (!dictionaryData) {
           console.log(`  ❌ Not found in any dictionary`)
           scrapedResults.push({ word, found: false, error: 'Not found' })
           continue
         }
-        
-        // Add the source to the data
+
         const finalData = {
           word,
-          partOfSpeech: (dictionaryData as any).partOfSpeech || (source === 'Urban Dictionary' ? 'informal' : ''),
-          cefrLevel: (dictionaryData as any).cefrLevel,
+          partOfSpeech: dictionaryData.partOfSpeech || (source === 'Urban Dictionary' ? 'informal' : ''),
           definition: dictionaryData.definition,
           examples: dictionaryData.examples,
-          pronunciation: (dictionaryData as any).pronunciation,
+          pronunciation: dictionaryData.pronunciation,
           found: true,
           source,
         }
-        
+
         console.log(`     ${finalData.partOfSpeech || 'unknown'} - ${finalData.definition?.substring(0, 50)}...`)
         scrapedResults.push(finalData)
-        
       } catch (error) {
-        console.log(`  ❌ Error scraping: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        scrapedResults.push({ word, found: false, error: 'Scraping failed' })
+        console.log(`  ❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        scrapedResults.push({ word, found: false, error: 'Lookup failed' })
       }
-      
-      // Small delay to be polite to dictionary servers
-      await new Promise(resolve => setTimeout(resolve, 400))
+
+      // Small delay to be polite to API servers
+      await new Promise((resolve) => setTimeout(resolve, 200))
     }
 
-    const successfulScrapes = scrapedResults.filter(r => r.found)
-    console.log(`\n📊 Scraped ${successfulScrapes.length}/${words.length} words successfully`)
+    const successfulScrapes = scrapedResults.filter((r) => r.found)
+    console.log(`\n📊 Found ${successfulScrapes.length}/${words.length} words`)
 
     if (successfulScrapes.length === 0) {
-      return NextResponse.json({
-        error: 'No words found in any dictionary sources (Cambridge, Oxford, Urban Dictionary)',
-        results: scrapedResults.map((r: any) => ({ word: r.word, error: r.error || 'Not found' }))
-      }, { status: 404 })
+      return NextResponse.json(
+        {
+          error: 'No words found in any dictionary sources',
+          results: scrapedResults.map((r: any) => ({ word: r.word, error: r.error || 'Not found' })),
+        },
+        { status: 404 }
+      )
     }
 
-    // Step 2: Use AI to process all scraped data in one batch
+    // Step 2: AI batch processing
     const useHuggingFace = process.env.USE_HUGGINGFACE === 'true'
     const useLMStudio = process.env.USE_LM_STUDIO === 'true'
-    
+
     let apiUrl: string
     let apiKey: string
     let model: string
-    
+
     if (useHuggingFace) {
-      // Hugging Face Inference API
       model = process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct'
       apiUrl = `https://api-inference.huggingface.co/models/${model}`
       apiKey = process.env.HUGGINGFACE_API_KEY || ''
       if (!apiKey) {
-        return NextResponse.json({ 
-          error: 'Hugging Face API key not configured. Please add HUGGINGFACE_API_KEY to your .env.local file' 
-        }, { status: 500 })
+        return NextResponse.json(
+          { error: 'Hugging Face API key not configured. Add HUGGINGFACE_API_KEY to your environment.' },
+          { status: 500 }
+        )
       }
     } else if (useLMStudio) {
-      // LM Studio (local)
       apiUrl = process.env.LM_STUDIO_URL || 'http://localhost:1234/v1/chat/completions'
       apiKey = 'lm-studio'
       model = process.env.LM_STUDIO_MODEL || 'local-model'
     } else {
-      // OpenAI
       apiUrl = 'https://api.openai.com/v1/chat/completions'
       apiKey = process.env.OPENAI_API_KEY || ''
       model = 'gpt-4o-mini'
       if (!apiKey) {
-        return NextResponse.json({ 
-          error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env.local file or set USE_LM_STUDIO=true or USE_HUGGINGFACE=true' 
-        }, { status: 500 })
+        return NextResponse.json(
+          { error: 'OpenAI API key not configured. Add OPENAI_API_KEY to your environment, or set USE_LM_STUDIO=true or USE_HUGGINGFACE=true.' },
+          { status: 500 }
+        )
       }
     }
 
-    // Prepare batch data for AI - handle both Cambridge and Oxford formats
-    const batchScrapedData = successfulScrapes.map((data, index) => {
-      const source = (data as any).source || 'Cambridge'
-      const formattedData = source.includes('Oxford') && !source.includes('Cambridge')
-        ? formatOxfordData(data)
-        : formatCambridgeData(data)
-      return `\n--- Word ${index + 1}: ${data.word} (from ${source}) ---\n${formattedData}`
-    }).join('\n')
+    // Prepare batch data text for AI
+    const batchScrapedData = successfulScrapes
+      .map((data: any, index) => {
+        let text = `\n--- Word ${index + 1}: ${data.word} (from ${data.source}) ---\n`
+        text += `Word: ${data.word}\n`
+        if (data.pronunciation) text += `Pronunciation: ${data.pronunciation}\n`
+        if (data.partOfSpeech) text += `Part of Speech: ${data.partOfSpeech}\n`
+        text += `Definition: ${data.definition}\n`
+        if (data.examples?.length) {
+          text += `Examples:\n`
+          data.examples.forEach((ex: string, i: number) => {
+            text += `  ${i + 1}. ${ex}\n`
+          })
+        }
+        return text
+      })
+      .join('\n')
 
-    const serviceName = useHuggingFace ? 'Hugging Face' : (useLMStudio ? 'LM Studio' : 'OpenAI')
+    const serviceName = useHuggingFace ? 'Hugging Face' : useLMStudio ? 'LM Studio' : 'OpenAI'
     console.log(`\n🤖 Sending ${successfulScrapes.length} words to ${serviceName} for batch processing...`)
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (useHuggingFace || (!useLMStudio && apiKey)) {
       headers['Authorization'] = `Bearer ${apiKey}`
     }
 
-    // Prepare prompts
-    // Check if any words need AI enhancement
-    const wordsNeedingEnhancement = successfulScrapes.filter((r: any) => r.needsAIEnhancement)
-    const enhancementNeeded = wordsNeedingEnhancement.length > 0
-    
-    if (enhancementNeeded) {
-      console.log(`   ⚡ ${wordsNeedingEnhancement.length} word(s) need AI enhancement for better definitions`)
-    }
-    
-    const systemPrompt = `You are an intelligent dictionary assistant processing MULTIPLE words. Some words may only have grammatical definitions (like "past tense of X"), but you should provide ACTUAL CONTEXTUAL MEANINGS.
+    const systemPrompt = `You are an intelligent dictionary assistant processing MULTIPLE words.
 
 Return ONLY a valid JSON array with this exact structure:
 [
@@ -199,148 +180,121 @@ Return ONLY a valid JSON array with this exact structure:
     "cefr_level": "A1" | "A2" | "B1" | "B2" | "C1" | "C2",
     "meaning_primary": "the actual contextual meaning or definition",
     "usage_tips": "example sentence showing real-world usage"
-  },
-  ... (more words)
+  }
 ]
 
-CRITICAL Rules:
+Rules:
 - Return a JSON ARRAY with one object per word
 - For part_of_speech: convert to lowercase full word (e.g., "noun" not "n.")
-- For cefr_level: use the exact level if provided, otherwise estimate based on complexity
-- For meaning_primary: If the dictionary only says "past participle of X" or similar, IGNORE that and provide the REAL CONTEXTUAL MEANING instead
-  * Example: "cramming" should be "studying intensively in a short time before an exam" NOT "present participle of cram"
-  * Example: "vetted" should be "examined or investigated carefully" NOT "past tense of vet"
-- For usage_tips: use scraped examples if available, or create a practical example sentence
+- For cefr_level: estimate based on word complexity if not provided
+- For meaning_primary: if the definition is "past tense/participle of X", provide the actual contextual meaning instead
+- For usage_tips: use a scraped example or write a practical sentence
 - Return ONLY the JSON array, no markdown code blocks or additional text
 - Process ALL words provided`
-    
-    const userPrompt = `Here is the data scraped from Cambridge Dictionary for ${successfulScrapes.length} words:\n${batchScrapedData}\n\nConvert ALL of these words to the required JSON array format.`
+
+    const userPrompt = `Here is the dictionary data for ${successfulScrapes.length} words:\n${batchScrapedData}\n\nConvert ALL of these to the required JSON array format.`
 
     let requestBody: any
-    
     if (useHuggingFace) {
-      // Hugging Face uses a simpler text-to-text format
       requestBody = {
         inputs: `${systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant:`,
-        parameters: {
-          max_new_tokens: 3000,
-          temperature: 0.2,
-          return_full_text: false
-        }
+        parameters: { max_new_tokens: 3000, temperature: 0.2, return_full_text: false },
       }
     } else {
-      // OpenAI/LM Studio use chat completions format
       requestBody = {
         model,
         messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: userPrompt
-          }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.2,
-        max_tokens: 3000 // Increased for batch processing
+        max_tokens: 3000,
       }
     }
 
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       console.error(`❌ ${serviceName} Error:`, errorData)
-      
-      // Fallback: use scraped data directly
-      console.log('📝 Using scraped data as fallback (no AI processing)')
-      const fallbackResults = successfulScrapes.map(data => ({
+
+      // Fallback: return scraped data without AI processing
+      const fallbackResults = successfulScrapes.map((data: any) => ({
         word: data.word,
-        part_of_speech: (data as any).partOfSpeech || '',
-        cefr_level: (data as any).cefrLevel || 'n.a.',
-        meaning_primary: truncateDefinition((data as any).definition || ''),
-        usage_tips: (data as any).examples?.[0] || ''
+        part_of_speech: data.partOfSpeech || '',
+        cefr_level: 'n.a.',
+        meaning_primary: truncateDefinition(data.definition || ''),
+        usage_tips: data.examples?.[0] || '',
       }))
-      
+
       return NextResponse.json({
         success: true,
         data: fallbackResults,
-        source: 'Cambridge Dictionary (AI unavailable)',
+        source: 'Free Dictionary (AI unavailable)',
         processed: fallbackResults.length,
-        total: words.length
+        total: words.length,
       })
     }
 
     const data = await response.json()
-    
-    // Extract content based on API response format
+
     let content: string
     if (useHuggingFace) {
-      // Hugging Face returns array or object with generated_text
       content = Array.isArray(data) ? data[0]?.generated_text : data.generated_text
     } else {
-      // OpenAI/LM Studio format
       content = data.choices[0]?.message?.content
     }
 
     if (!content) {
-      console.error('❌ No response from AI')
-      // Fallback
-      const fallbackResults = successfulScrapes.map(data => ({
+      const fallbackResults = successfulScrapes.map((data: any) => ({
         word: data.word,
-        part_of_speech: (data as any).partOfSpeech || '',
-        cefr_level: (data as any).cefrLevel || 'n.a.',
-        meaning_primary: truncateDefinition((data as any).definition || ''),
-        usage_tips: (data as any).examples?.[0] || ''
+        part_of_speech: data.partOfSpeech || '',
+        cefr_level: 'n.a.',
+        meaning_primary: truncateDefinition(data.definition || ''),
+        usage_tips: data.examples?.[0] || '',
       }))
-      
+
       return NextResponse.json({
         success: true,
         data: fallbackResults,
-        source: 'Cambridge Dictionary (fallback)',
+        source: 'Free Dictionary (fallback)',
         processed: fallbackResults.length,
-        total: words.length
+        total: words.length,
       })
     }
 
     console.log('🤖 AI processed batch response received')
 
-    // Parse the JSON array response
     let processedData
     try {
       const cleanContent = content.replace(/```json\n?|\n?```/g, '').trim()
       processedData = JSON.parse(cleanContent)
-      
-      if (!Array.isArray(processedData)) {
-        throw new Error('Response is not an array')
-      }
-    } catch (parseError) {
+      if (!Array.isArray(processedData)) throw new Error('Response is not an array')
+    } catch {
       console.error('Failed to parse AI response, using scraped data as fallback')
-      processedData = successfulScrapes.map(data => ({
+      processedData = successfulScrapes.map((data: any) => ({
         word: data.word,
-        part_of_speech: (data as any).partOfSpeech || '',
-        cefr_level: (data as any).cefrLevel || 'n.a.',
-        meaning_primary: truncateDefinition((data as any).definition || ''),
-        usage_tips: (data as any).examples?.[0] || ''
+        part_of_speech: data.partOfSpeech || '',
+        cefr_level: 'n.a.',
+        meaning_primary: truncateDefinition(data.definition || ''),
+        usage_tips: data.examples?.[0] || '',
       }))
     }
 
-    // Validate and ensure all words are present
     const finalResults = processedData.map((item: any) => {
-      // Find original scraped data for this word
-      const scraped: any = successfulScrapes.find(s => s.word.toLowerCase() === item.word?.toLowerCase())
-      
+      const scraped: any = successfulScrapes.find(
+        (s: any) => s.word.toLowerCase() === item.word?.toLowerCase()
+      )
       return {
         word: item.word || scraped?.word || '',
         part_of_speech: item.part_of_speech || scraped?.partOfSpeech || '',
-        cefr_level: item.cefr_level || scraped?.cefrLevel || 'n.a.',
+        cefr_level: item.cefr_level || 'n.a.',
         meaning_primary: truncateDefinition(item.meaning_primary || scraped?.definition || ''),
-        usage_tips: item.usage_tips || scraped?.examples?.[0] || ''
+        usage_tips: item.usage_tips || scraped?.examples?.[0] || '',
       }
     })
 
@@ -350,16 +304,16 @@ CRITICAL Rules:
     return NextResponse.json({
       success: true,
       data: finalResults,
-      source: 'Cambridge Dictionary + AI Batch Processing',
+      source: 'Free Dictionary + AI Batch Processing',
       processed: finalResults.length,
       total: words.length,
-      failed: scrapedResults.filter(r => !r.found).map(r => r.word)
+      failed: scrapedResults.filter((r: any) => !r.found).map((r: any) => r.word),
     })
-
   } catch (error) {
     console.error('❌ Batch dictionary fetch error:', error)
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Failed to fetch dictionary data' 
-    }, { status: 500 })
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch dictionary data' },
+      { status: 500 }
+    )
   }
 }
