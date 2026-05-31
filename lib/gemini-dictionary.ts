@@ -25,7 +25,9 @@ function extractJSON(text: string): any {
   }
 }
 
-async function callGemini(prompt: string, retries = 3): Promise<string> {
+// retries=0 for single-word lookups (fail fast, fall back immediately)
+// retries=2 for batch lookups (waiting a bit between words is acceptable)
+async function callGemini(prompt: string, retries = 0): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set')
 
@@ -46,8 +48,7 @@ async function callGemini(prompt: string, retries = 3): Promise<string> {
     })
 
     if (response.status === 429) {
-      // Rate limited — wait and retry with exponential backoff
-      const waitMs = attempt * 10000 // 10s, 20s, 30s
+      const waitMs = attempt * 5000 // 5s, 10s
       console.log(`Gemini rate limited (429), retrying in ${waitMs / 1000}s... (attempt ${attempt}/${retries})`)
       if (attempt < retries) {
         await new Promise((resolve) => setTimeout(resolve, waitMs))
@@ -74,8 +75,8 @@ async function callGemini(prompt: string, retries = 3): Promise<string> {
   throw new Error('Gemini failed after all retries')
 }
 
-export async function geminiLookup(word: string): Promise<GeminiWordResult> {
-  const prompt = `Search Cambridge Dictionary or Oxford Dictionary and look up the English word "${word}".
+function buildPrompt(word: string): string {
+  return `Search Cambridge Dictionary or Oxford Dictionary and look up the English word "${word}".
 
 Return ONLY a valid JSON object — no markdown, no explanation:
 {
@@ -86,9 +87,11 @@ Return ONLY a valid JSON object — no markdown, no explanation:
 }
 
 Use the CEFR level from Cambridge if available. Return ONLY the JSON object.`
+}
 
+export async function geminiLookup(word: string): Promise<GeminiWordResult> {
   try {
-    const text = await callGemini(prompt)
+    const text = await callGemini(buildPrompt(word), 0) // no retries — fail fast, fall back immediately
     const parsed = extractJSON(text)
     return {
       word,
@@ -118,8 +121,16 @@ export async function geminiLookupBatch(words: string[]): Promise<GeminiWordResu
   for (let i = 0; i < words.length; i++) {
     console.log(`   Gemini [${i + 1}/${words.length}] looking up: ${words[i]}`)
     try {
-      const result = await geminiLookup(words[i])
-      results.push(result)
+      const text = await callGemini(buildPrompt(words[i]), 2)
+      const parsed = extractJSON(text)
+      results.push({
+        word: words[i],
+        part_of_speech: parsed.part_of_speech || '',
+        cefr_level: parsed.cefr_level || 'n.a.',
+        meaning_primary: truncateDefinition(parsed.meaning_primary || ''),
+        usage_tips: parsed.usage_tips || '',
+        found: !!(parsed.meaning_primary),
+      })
     } catch (error) {
       console.error(`Gemini batch failed for "${words[i]}":`, error)
       results.push({ word: words[i], part_of_speech: '', cefr_level: 'n.a.', meaning_primary: '', usage_tips: '', found: false })
