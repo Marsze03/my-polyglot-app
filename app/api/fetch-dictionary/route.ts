@@ -4,6 +4,8 @@ import { scrapeFreeDictionary } from '@/lib/free-dictionary-scraper'
 import { scrapeUrbanDictionary } from '@/lib/urban-dictionary-scraper'
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limiter'
 
+export const maxDuration = 60
+
 function truncateDefinition(text: string, maxWords: number = 20): string {
   if (!text) return text
   const words = text.trim().split(/\s+/)
@@ -185,19 +187,42 @@ Estimate cefr_level if not provided. Return ONLY the JSON, no markdown.`
       }
     }
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    })
+    // Fallback data from dictionary in case AI processing fails or times out
+    const rawFallback = {
+      part_of_speech: dictionaryData.partOfSpeech || '',
+      cefr_level: 'n.a.',
+      meaning_primary: truncateDefinition(dictionaryData.definition || ''),
+      usage_tips: dictionaryData.examples?.[0] || '',
+    }
+
+    let response: Response
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 30000) // 30s timeout
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+    } catch (fetchErr) {
+      console.error(`❌ ${serviceName} fetch failed (timeout or network):`, fetchErr)
+      return NextResponse.json({
+        success: true,
+        data: rawFallback,
+        source: `${source} (${serviceName} unavailable)`,
+      })
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error(`❌ ${serviceName} Error:`, errorData)
-      return NextResponse.json(
-        { error: `Failed to process with ${serviceName}.` },
-        { status: response.status }
-      )
+      console.error(`❌ ${serviceName} Error ${response.status}:`, errorData)
+      return NextResponse.json({
+        success: true,
+        data: rawFallback,
+        source: `${source} (${serviceName} unavailable)`,
+      })
     }
 
     const data = await response.json()
@@ -206,7 +231,11 @@ Estimate cefr_level if not provided. Return ONLY the JSON, no markdown.`
       : data.choices[0]?.message?.content
 
     if (!content) {
-      return NextResponse.json({ error: 'No response from AI' }, { status: 500 })
+      return NextResponse.json({
+        success: true,
+        data: rawFallback,
+        source: `${source} (${serviceName} no response)`,
+      })
     }
 
     let processedData
@@ -214,12 +243,7 @@ Estimate cefr_level if not provided. Return ONLY the JSON, no markdown.`
       const cleanContent = content.replace(/```json\n?|\n?```/g, '').trim()
       processedData = JSON.parse(cleanContent)
     } catch {
-      processedData = {
-        part_of_speech: dictionaryData.partOfSpeech || '',
-        cefr_level: 'n.a.',
-        meaning_primary: dictionaryData.definition || '',
-        usage_tips: dictionaryData.examples?.[0] || '',
-      }
+      processedData = rawFallback
     }
 
     if (!processedData.part_of_speech || !processedData.meaning_primary) {
